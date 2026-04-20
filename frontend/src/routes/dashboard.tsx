@@ -687,6 +687,12 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     if (tx.isSuccess) {
       setStep(4);
       ctx.refetch();
+      // Auto-aggregate so compliance check can run immediately after submit.
+      if (ctx.address) {
+        ctx.aggregateTotal(ctx.address as `0x${string}`)
+          .then((h) => setAggHash(h))
+          .catch(() => {});
+      }
     }
   }, [tx.isLoading, tx.isSuccess, ctx]);
 
@@ -909,6 +915,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const [decrypted, setDecrypted] = useState<null | boolean>(null);
   const [decrypting, setDecrypting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aggregating, setAggregating] = useState(false);
   const tx = useWaitForTransactionReceipt({ hash });
 
   useEffect(() => {
@@ -918,6 +925,26 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
       ctx.refetch();
     }
   }, [tx.isLoading, tx.isSuccess, ctx]);
+
+  // Pre-flight: are both prerequisites met?
+  const noTotal = !ctx.hasAggregated;
+  const noCap = !ctx.hasCapSet;
+  const canRun = !noTotal && !noCap;
+
+  async function doAggregate() {
+    if (!ctx.address) return;
+    setError(null);
+    setAggregating(true);
+    try {
+      await ctx.aggregateTotal(ctx.address as `0x${string}`);
+      await new Promise((r) => setTimeout(r, 4000));
+      ctx.refetch();
+    } catch (e) {
+      setError("Aggregate failed: " + (e as Error).message);
+    } finally {
+      setAggregating(false);
+    }
+  }
 
   async function run() {
     if (!ctx.address) return;
@@ -929,7 +956,15 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
       const h = await ctx.checkCompliance(ctx.address as `0x${string}`);
       setHash(h);
     } catch (e) {
-      setError((e as Error).message);
+      const msg = (e as Error).message ?? String(e);
+      // Decode common revert reasons into helpful messages.
+      if (msg.includes("No emissions total") || msg.includes("isInitialized")) {
+        setError("No aggregated total on-chain. Click \"Aggregate\" below first.");
+      } else if (msg.includes("No regulatory cap")) {
+        setError("No regulatory cap set for your address. The admin must call setCap + grantCheckAccess first.");
+      } else {
+        setError(msg);
+      }
       setStep(0);
     }
   }
@@ -964,9 +999,39 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             Verification Engine
           </p>
 
+          {/* Pre-flight requirement banners */}
+          {noTotal && (
+            <div className="mt-5 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-none text-amber-400" />
+              <div className="flex-1 text-[13px] text-foreground/75">
+                <span className="font-semibold text-amber-400">Step required: </span>
+                Emissions not yet aggregated. Submit emissions first, then click below.
+                <button
+                  onClick={doAggregate}
+                  disabled={aggregating || ctx.facilityIds.length === 0}
+                  className="ml-3 inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 px-3 py-1 text-[11px] font-semibold text-amber-400 transition hover:bg-amber-500/10 disabled:opacity-50"
+                >
+                  {aggregating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+                  Aggregate
+                </button>
+              </div>
+            </div>
+          )}
+          {noCap && (
+            <div className="mt-3 flex items-start gap-3 rounded-lg border border-sky-500/30 bg-sky-500/5 p-4">
+              <Info className="mt-0.5 h-4 w-4 flex-none text-sky-400" />
+              <p className="text-[13px] text-foreground/75">
+                <span className="font-semibold text-sky-400">Admin action needed: </span>
+                No encrypted cap has been set for your address yet. The regulator must call{" "}
+                <code className="rounded bg-foreground/10 px-1 font-mono text-[11px]">setCap</code> +{" "}
+                <code className="rounded bg-foreground/10 px-1 font-mono text-[11px]">grantCheckAccess</code> from the Admin panel.
+              </p>
+            </div>
+          )}
+
           <button
             onClick={run}
-            disabled={step === 1 || step === 2 || !ctx.address}
+            disabled={step === 1 || step === 2 || !ctx.address || !canRun}
             className="mt-5 inline-flex items-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background transition hover:bg-foreground/90 disabled:opacity-60"
           >
             {step === 1 || step === 2 ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}

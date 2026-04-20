@@ -98,6 +98,15 @@ export function useCovertMrv() {
     query: { enabled: !!address },
   });
 
+  // Whether the regulator has set an encrypted cap for this address.
+  const regulatoryCapHandle = useReadContract({
+    address: CAP_REGISTRY_ADDRESS,
+    abi: CAP_REGISTRY_ABI,
+    functionName: "getRegulatoryCap",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
+
   const settledStatus = useReadContract({
     address: CAP_CHECK_ADDRESS,
     abi: CAP_CHECK_ABI,
@@ -358,7 +367,7 @@ export function useCovertMrv() {
           functionName: "getMyEmissions",
           args: [facilityId],
           account: address,
-        })) as bigint;
+        })) as unknown as bigint;
         if (!handle) throw new Error("Facility has no encrypted handle yet.");
         const value = await decryptUint64(pc, wc, handle, fhe.setLabel);
         fhe.setStep("READY");
@@ -383,6 +392,9 @@ export function useCovertMrv() {
     role: (myRole.data ?? 0) as number,
     facilityIds: (facilityIds.data ?? []) as readonly bigint[],
     companyTotalHandle: (companyTotalHandle.data ?? 0n) as bigint,
+    hasAggregated: !!(companyTotalHandle.data as bigint | undefined),
+    regulatoryCapHandle: (regulatoryCapHandle.data ?? 0n) as bigint,
+    hasCapSet: !!(regulatoryCapHandle.data as bigint | undefined),
     complianceHandle: (complianceHandle.data ?? 0n) as bigint,
     settled: settledStatus.data as readonly [boolean, boolean] | undefined,
     lastCheckedAt: (lastCheckedAt.data ?? 0n) as bigint,
@@ -398,6 +410,7 @@ export function useCovertMrv() {
       myRole.refetch();
       facilityIds.refetch();
       companyTotalHandle.refetch();
+      regulatoryCapHandle.refetch();
       complianceHandle.refetch();
       settledStatus.refetch();
       lastCheckedAt.refetch();

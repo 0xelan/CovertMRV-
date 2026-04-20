@@ -171,7 +171,7 @@ export async function decryptUint64(
   }
 
   onStep?.("Creating permit");
-  await c.permits.getOrCreateSelfPermit({});
+  await c.permits.getOrCreateSelfPermit(await publicClient.getChainId());
   onStep?.("Decrypting");
   try {
     const result = (await c
@@ -198,7 +198,7 @@ export async function decryptUint64(
           /* ignore */
         }
       }
-      await c.permits.getOrCreateSelfPermit({});
+      await c.permits.getOrCreateSelfPermit(await publicClient.getChainId());
       onStep?.("Decrypting (retry)");
       const result = (await c
         .decryptForView(handle, FheTypes.Uint64)
@@ -245,7 +245,7 @@ export async function decryptBool(
   }
 
   onStep?.("Creating permit");
-  await c.permits.getOrCreateSelfPermit({});
+  await c.permits.getOrCreateSelfPermit(await publicClient.getChainId());
   onStep?.("Decrypting");
   try {
     const result = (await c.decryptForView(handle, FheTypes.Bool).execute()) as boolean;
@@ -269,7 +269,7 @@ export async function decryptBool(
           /* ignore */
         }
       }
-      await c.permits.getOrCreateSelfPermit({});
+      await c.permits.getOrCreateSelfPermit(await publicClient.getChainId());
       onStep?.("Decrypting (retry)");
       const result = (await c.decryptForView(handle, FheTypes.Bool).execute()) as boolean;
       if (typeof window !== "undefined") {
@@ -304,7 +304,7 @@ export async function decryptForSettlement(
   const c = await getFheClient(publicClient, walletClient);
   const handle = typeof ctHash === "string" ? BigInt(ctHash) : ctHash;
   onStep?.("Creating permit");
-  await c.permits.getOrCreateSelfPermit({});
+  await c.permits.getOrCreateSelfPermit(await publicClient.getChainId());
   onStep?.("Decrypting for settlement");
   const result = (await c.decryptForTx(handle).withPermit().execute()) as {
     decryptedValue: unknown;
