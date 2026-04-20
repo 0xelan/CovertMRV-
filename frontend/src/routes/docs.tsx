@@ -14,25 +14,6 @@ import {
 import { useState } from "react";
 
 export const Route = createFileRoute("/docs")({
-  head: () => ({
-    meta: [
-      { title: "Architecture — CovertMRV Protocol Documentation" },
-      {
-        name: "description",
-        content:
-          "Protocol overview, architecture diagram, FHE primer, smart contract reference, and selective disclosure model for CovertMRV.",
-      },
-      {
-        property: "og:title",
-        content: "CovertMRV — Protocol Architecture",
-      },
-      {
-        property: "og:description",
-        content:
-          "How encrypted MRV works: contracts, disclosure roles, and FHE operations.",
-      },
-    ],
-  }),
   component: Docs,
 });
 

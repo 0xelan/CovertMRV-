@@ -1,23 +1,25 @@
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
+import tailwindcss from "@tailwindcss/vite";
+import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
-  vite: {
-    server: {
-      port: 5173,
-      strictPort: true,
-    },
-    worker: {
-      format: "es",
-    },
-    optimizeDeps: {
-      // @cofhe/sdk must be excluded so Vite doesn't tree-shake its dynamic
-      // Worker / WASM internals. But its CJS dependency iframe-shared-storage
-      // must be explicitly included so Vite pre-bundles it (CJS→ESM) and
-      // exposes named exports like `constructClient` — otherwise the browser
-      // gets the raw CJS file and throws "does not provide an export named
-      // 'constructClient'".
-      exclude: ["@cofhe/sdk"],
-      include: ["iframe-shared-storage"],
-    },
+  plugins: [
+    TanStackRouterVite({ target: "react", autoCodeSplitting: true }),
+    react(),
+    tailwindcss(),
+    tsconfigPaths(),
+  ],
+  server: {
+    port: 5173,
+    strictPort: true,
+  },
+  worker: {
+    format: "es",
+  },
+  optimizeDeps: {
+    exclude: ["@cofhe/sdk"],
+    include: ["iframe-shared-storage"],
   },
 });

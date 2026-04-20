@@ -45,21 +45,6 @@ const dashboardSearchSchema = z.object({
 
 export const Route = createFileRoute("/dashboard")({
   validateSearch: (raw: Record<string, unknown>) => dashboardSearchSchema.parse(raw),
-  head: () => ({
-    meta: [
-      { title: "Dashboard — CovertMRV Compliance Console" },
-      {
-        name: "description",
-        content:
-          "Encrypted compliance dashboard. Submit emissions, run cap checks, manage audit access, and inspect the disclosure console.",
-      },
-      { property: "og:title", content: "CovertMRV Dashboard" },
-      {
-        property: "og:description",
-        content: "The institutional-grade encrypted compliance console.",
-      },
-    ],
-  }),
   component: Dashboard,
 });
 
