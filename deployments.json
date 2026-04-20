@@ -1,0 +1,9 @@
+{
+  "arb-sepolia": {
+    "chainId": 421614,
+    "deployer": "0x2301CD93feC8249219b4b661b4bc81889b494De6",
+    "capRegistry": "0x13739cCd234A901060453d7b86C1BCc245B40428",
+    "capCheck": "0x2792563D003faBEecfbac8c32c9baA7705030C26",
+    "timestamp": "2026-04-20T02:46:05.117Z"
+  }
+}

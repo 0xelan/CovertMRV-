@@ -1,0 +1,20 @@
+node_modules
+.env
+.env.local
+artifacts
+cache
+typechain-types
+coverage
+coverage.json
+deployments/localcofhe
+.DS_Store
+frontend/node_modules
+frontend/dist
+frontend/.env.local
+frontend/.vercel
+
+# Internal docs (not for public repo)
+ARCHITECTURE.md
+about.md
+prompt_covertmrv.md
+prompt_front.md
