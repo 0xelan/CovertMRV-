@@ -8,11 +8,19 @@ import {DisclosureACL} from "./DisclosureACL.sol";
 /// @notice Encrypted facility-level emissions storage, aggregation, and
 ///         encrypted regulatory cap registry for CovertMRV.
 contract CapRegistry is DisclosureACL {
+    /// @notice ISO 14064 / GHG Protocol emissions scope categories.
+    enum Scope {
+        SCOPE1, // Direct emissions (combustion, processes, fugitive)
+        SCOPE2, // Indirect — purchased electricity, heat, steam, cooling
+        SCOPE3  // All other indirect — value chain, travel, waste, etc.
+    }
+
     struct FacilityData {
         euint64 encryptedEmissions;
         uint256 reportingPeriod;
         uint256 reportingYear;
-        bool submitted;
+        Scope   scope;
+        bool    submitted;
     }
 
     // company => facilityId => FacilityData
@@ -30,7 +38,8 @@ contract CapRegistry is DisclosureACL {
         address indexed company,
         uint256 indexed facilityId,
         uint256 reportingPeriod,
-        uint256 reportingYear
+        uint256 reportingYear,
+        Scope   scope
     );
     event TotalAggregated(address indexed company, uint256 facilityCount);
     event CapSet(address indexed company);
@@ -47,10 +56,12 @@ contract CapRegistry is DisclosureACL {
     /// @param _facilityId    Caller-assigned facility identifier.
     /// @param _encEmissions  Client-encrypted uint64 emissions value.
     /// @param _reportingYear ISO year for this report (e.g. 2025).
+    /// @param _scope         ISO 14064 scope category (0=Scope1, 1=Scope2, 2=Scope3).
     function submitEmissions(
         uint256 _facilityId,
         InEuint64 calldata _encEmissions,
-        uint256 _reportingYear
+        uint256 _reportingYear,
+        Scope _scope
     ) external {
         require(
             roles[msg.sender] == Role.EMITTER || msg.sender == owner,
@@ -66,6 +77,7 @@ contract CapRegistry is DisclosureACL {
         f.encryptedEmissions = emissions;
         f.reportingPeriod = block.timestamp;
         f.reportingYear = _reportingYear;
+        f.scope = _scope;
         f.submitted = true;
 
         if (isNew) {
@@ -73,18 +85,20 @@ contract CapRegistry is DisclosureACL {
         }
         hasSubmitted[msg.sender] = true;
 
-        emit EmissionsSubmitted(msg.sender, _facilityId, block.timestamp, _reportingYear);
+        emit EmissionsSubmitted(msg.sender, _facilityId, block.timestamp, _reportingYear, _scope);
     }
 
     /// @notice Submit emissions for multiple facilities in a single transaction.
-    ///         All facilities share the same reporting year.
+    ///         All facilities share the same reporting year and scope category.
     /// @param _facilityIds    Array of facility identifiers.
     /// @param _encEmissions   Parallel array of encrypted emissions values.
     /// @param _reportingYear  ISO year for this batch report (e.g. 2025).
+    /// @param _scope          ISO 14064 scope category (0=Scope1, 1=Scope2, 2=Scope3).
     function batchSubmitEmissions(
         uint256[] calldata _facilityIds,
         InEuint64[] calldata _encEmissions,
-        uint256 _reportingYear
+        uint256 _reportingYear,
+        Scope _scope
     ) external {
         require(
             roles[msg.sender] == Role.EMITTER || msg.sender == owner,
@@ -110,9 +124,10 @@ contract CapRegistry is DisclosureACL {
             f.encryptedEmissions = emissions;
             f.reportingPeriod = ts;
             f.reportingYear = _reportingYear;
+            f.scope = _scope;
             f.submitted = true;
 
-            emit EmissionsSubmitted(sender, fid, ts, _reportingYear);
+            emit EmissionsSubmitted(sender, fid, ts, _reportingYear, _scope);
 
             unchecked { ++i; }
         }
@@ -244,5 +259,12 @@ contract CapRegistry is DisclosureACL {
         uint256 _facilityId
     ) external view returns (bool) {
         return facilityEmissions[_company][_facilityId].submitted;
+    }
+
+    function getFacilityScope(
+        address _company,
+        uint256 _facilityId
+    ) external view returns (Scope) {
+        return facilityEmissions[_company][_facilityId].scope;
     }
 }

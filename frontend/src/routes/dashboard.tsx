@@ -24,6 +24,10 @@ import {
   UserCheck,
   Award,
   Download,
+  Layers,
+  Plus,
+  Trash2,
+  PackagePlus,
 } from "lucide-react";
 import { z } from "zod";
 import { isAddress } from "viem";
@@ -34,7 +38,7 @@ import { ConnectWallet } from "@/components/shared/ConnectWallet";
 import { ChainGuard } from "@/components/shared/ChainGuard";
 import { useCovertMrv, useWaitForTransactionReceipt } from "@/hooks/useCovertMrv";
 import { useAccount, useChainId } from "wagmi";
-import { CAP_REGISTRY_ADDRESS, CAP_CHECK_ADDRESS } from "@/config/contracts";
+import { CAP_REGISTRY_ADDRESS, CAP_CHECK_ADDRESS, COMPLIANCE_CERTIFICATE_ADDRESS } from "@/config/contracts";
 import { fmtTonnes, shortAddress, shortHandle, fmtCountdown } from "@/lib/format";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -435,10 +439,11 @@ function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             </div>
           </div>
 
-          <div className="mt-8 grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-foreground/10 bg-foreground/10">
+          <div className="mt-8 grid grid-cols-4 gap-px overflow-hidden rounded-xl border border-foreground/10 bg-foreground/10">
             {[
               { l: "Facilities Reported", v: String(facilityCount), spark: sparkA },
               { l: "Aggregate Total", v: ctx.companyTotalHandle ? "encrypted" : "—" },
+              { l: "Certificates", v: ctx.certificateBalance > 0n ? String(ctx.certificateBalance) : "0" },
               { l: "Last Check", v: ctx.lastCheckedAt ? new Date(Number(ctx.lastCheckedAt) * 1000).toLocaleString() : "—", spark: sparkB },
             ].map((s, i) => (
               <motion.div
@@ -525,9 +530,10 @@ function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             <Activity className="h-3 w-3 text-emerald" /> arbitrum sepolia
           </span>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
           <ContractCard label="CapRegistry" address={CAP_REGISTRY_ADDRESS} />
           <ContractCard label="CapCheck" address={CAP_CHECK_ADDRESS} />
+          <ContractCard label="ComplianceCertificate" address={COMPLIANCE_CERTIFICATE_ADDRESS} />
         </div>
       </div>
     </>
@@ -680,12 +686,30 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const [facility, setFacility] = useState("");
   const [emissions, setEmissions] = useState("");
   const [reportingYear, setReportingYear] = useState(String(new Date().getFullYear()));
+  const [scope, setScope] = useState<0 | 1 | 2>(0);
   const [step, setStep] = useState(0);
   const [hash, setHash] = useState<`0x${string}` | undefined>();
   const [error, setError] = useState<string | null>(null);
   const [aggHash, setAggHash] = useState<`0x${string}` | undefined>();
+  // Batch submit state
+  const [showBatch, setShowBatch] = useState(false);
+  const [batchRows, setBatchRows] = useState<{ facilityId: string; tonnes: string }[]>([
+    { facilityId: "", tonnes: "" },
+    { facilityId: "", tonnes: "" },
+  ]);
+  const [batchHash, setBatchHash] = useState<`0x${string}` | undefined>();
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchPending, setBatchPending] = useState(false);
+
   const tx = useWaitForTransactionReceipt({ hash });
   const aggTx = useWaitForTransactionReceipt({ hash: aggHash });
+  const batchTx = useWaitForTransactionReceipt({ hash: batchHash });
+
+  const SCOPE_OPTIONS = [
+    { value: 0, label: "Scope 1 — Direct", desc: "Combustion, process, fugitive" },
+    { value: 1, label: "Scope 2 — Indirect Energy", desc: "Purchased electricity, heat, steam" },
+    { value: 2, label: "Scope 3 — Value Chain", desc: "Travel, supply chain, waste" },
+  ] as const;
 
   useEffect(() => {
     if (tx.isLoading) setStep(2);
@@ -708,7 +732,7 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     setStep(1);
     try {
       if (!ctx.fheReady) throw new Error("FHE client not ready — wait a moment then retry");
-      const h = await ctx.submitEmissions(BigInt(facility), BigInt(emissions), Number(reportingYear));
+      const h = await ctx.submitEmissions(BigInt(facility), BigInt(emissions), Number(reportingYear), scope);
       setHash(h);
     } catch (e) {
       setError((e as Error).message);
@@ -727,6 +751,26 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     }
   }
 
+  async function submitBatch(e: React.FormEvent) {
+    e.preventDefault();
+    setBatchError(null);
+    setBatchHash(undefined);
+    const validRows = batchRows.filter((r) => r.facilityId && r.tonnes);
+    if (validRows.length === 0) return setBatchError("Add at least one facility row.");
+    setBatchPending(true);
+    try {
+      if (!ctx.fheReady) throw new Error("FHE client not ready — wait a moment then retry");
+      const fids = validRows.map((r) => BigInt(r.facilityId));
+      const amounts = validRows.map((r) => BigInt(r.tonnes));
+      const h = await ctx.batchSubmitEmissions(fids, amounts, Number(reportingYear), scope);
+      setBatchHash(h);
+    } catch (e) {
+      setBatchError((e as Error).message);
+    } finally {
+      setBatchPending(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -735,6 +779,7 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
         desc="Submit a facility-level emissions value. The number is encrypted client-side before it ever leaves your browser."
       />
       <div className="grid gap-6 p-10 lg:grid-cols-[1.2fr_1fr]">
+        <div className="space-y-6">
         <form
           onSubmit={submit}
           className="rounded-2xl border border-foreground/10 bg-surface p-8"
@@ -764,6 +809,30 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
                 placeholder="e.g. 2025"
                 className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-emerald"
               />
+            </Field>
+            <Field label="ISO 14064 Scope">
+              <div className="grid grid-cols-3 gap-2">
+                {SCOPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setScope(opt.value)}
+                    className={`flex flex-col items-start gap-1 rounded-lg border px-3 py-3 text-left transition ${
+                      scope === opt.value
+                        ? "border-emerald/60 bg-emerald/[0.08] text-foreground"
+                        : "border-foreground/15 bg-background text-foreground/60 hover:border-foreground/30"
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase">
+                      <Layers className="h-3 w-3" />
+                      {opt.label.split(" — ")[0]}
+                    </span>
+                    <span className="font-mono text-[10px] leading-tight opacity-70">
+                      {opt.desc}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </Field>
             <Field label="Emissions (tonnes CO₂e)">
               <input
@@ -819,6 +888,113 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             </p>
           )}
         </form>
+
+        {/* ── Batch Submit ─────────────────────────────────────── */}
+        <div className="rounded-2xl border border-foreground/10 bg-surface p-8">
+          <button
+            type="button"
+            onClick={() => setShowBatch((v) => !v)}
+            className="flex w-full items-center justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <PackagePlus className="h-4 w-4 text-emerald" strokeWidth={1.7} />
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/60">
+                Batch Submit — multiple facilities in one transaction
+              </p>
+            </div>
+            <ChevronRight
+              className={`h-4 w-4 text-foreground/40 transition-transform ${showBatch ? "rotate-90" : ""}`}
+            />
+          </button>
+
+          {showBatch && (
+            <form onSubmit={submitBatch} className="mt-6 space-y-4">
+              <p className="text-[12.5px] leading-relaxed text-foreground/60">
+                Submit emissions for multiple facilities in a single transaction.
+                Shares the <strong>Reporting Year</strong> and <strong>Scope</strong> from the single-facility form above.
+                Gas estimate: ~{(1_200_000 + batchRows.filter((r) => r.facilityId && r.tonnes).length * 200_000).toLocaleString()} gas.
+              </p>
+
+              {batchRows.map((row, idx) => (
+                <div key={idx} className="grid grid-cols-[1fr_1fr_auto] items-end gap-3">
+                  <Field label={`Facility ID #${idx + 1}`}>
+                    <input
+                      type="number"
+                      value={row.facilityId}
+                      onChange={(e) =>
+                        setBatchRows((rows) =>
+                          rows.map((r, i) => (i === idx ? { ...r, facilityId: e.target.value } : r))
+                        )
+                      }
+                      placeholder="e.g. 1"
+                      className="w-full rounded-lg border border-foreground/15 bg-background px-3 py-2.5 font-mono text-sm outline-none transition focus:border-emerald"
+                    />
+                  </Field>
+                  <Field label="Tonnes CO₂e">
+                    <input
+                      type="number"
+                      value={row.tonnes}
+                      onChange={(e) =>
+                        setBatchRows((rows) =>
+                          rows.map((r, i) => (i === idx ? { ...r, tonnes: e.target.value } : r))
+                        )
+                      }
+                      placeholder="e.g. 5000"
+                      className="w-full rounded-lg border border-foreground/15 bg-background px-3 py-2.5 font-mono text-sm outline-none transition focus:border-emerald"
+                    />
+                  </Field>
+                  <button
+                    type="button"
+                    onClick={() => setBatchRows((rows) => rows.filter((_, i) => i !== idx))}
+                    disabled={batchRows.length <= 1}
+                    className="mb-0.5 flex h-10 w-10 flex-none items-center justify-center rounded-lg border border-foreground/15 bg-background text-foreground/40 transition hover:border-destructive/40 hover:text-destructive disabled:opacity-30"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setBatchRows((rows) => [...rows, { facilityId: "", tonnes: "" }])}
+                className="inline-flex items-center gap-2 rounded-full border border-foreground/20 px-3 py-1.5 text-[12px] font-medium text-foreground/60 transition hover:border-emerald hover:text-emerald"
+              >
+                <Plus className="h-3.5 w-3.5" /> Add facility
+              </button>
+
+              {batchError && (
+                <p className="inline-flex items-center gap-2 font-mono text-[12px] text-destructive">
+                  <AlertTriangle className="h-3.5 w-3.5" /> {batchError}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={batchPending || !ctx.fheReady || ctx.role === 0}
+                  className="inline-flex items-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background transition hover:bg-foreground/90 disabled:opacity-60"
+                >
+                  {batchPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackagePlus className="h-4 w-4" />}
+                  Encrypt & Batch Submit ({batchRows.filter((r) => r.facilityId && r.tonnes).length} facilities)
+                </button>
+                {batchHash && (
+                  <p className="font-mono text-[11px] text-emerald">
+                    {batchTx.isSuccess ? "Batch confirmed ✓" : "Confirming…"} ·{" "}
+                    <a
+                      href={`https://sepolia.arbiscan.io/tx/${batchHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:underline"
+                    >
+                      {shortHandle(batchHash)}
+                    </a>
+                  </p>
+                )}
+              </div>
+            </form>
+          )}
+        </div>
+        </div>{/* end left column wrapper */}
 
         <div className="space-y-6">
           <div className="rounded-2xl border border-foreground/10 bg-surface p-7">

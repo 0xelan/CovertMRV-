@@ -5,41 +5,44 @@
 
 ## 1. What We Built in Wave 3 — The Full Picture
 
-Wave 3 transforms CovertMRV from a 2-contract proof-of-concept into a production-grade, privacy-first compliance protocol with on-chain NFT certificates, batch enterprise submissions, time-bounded audit access, and a REST API for IoT/CEMS integration.
+Wave 3 transforms CovertMRV from a 2-contract proof-of-concept into a production-grade, privacy-first compliance protocol with on-chain NFT certificates, batch enterprise submissions, time-bounded audit access, ISO 14064 scope categorisation, and a REST API for IoT/CEMS integration.
 
 ### Deliverables at a Glance
 
 | # | Deliverable | Status | Notes |
 |---|-------------|--------|-------|
 | 1 | SDK upgrade → @cofhe/sdk 0.5.2 | ✅ Done | Breaking API changes handled |
-| 2 | `ComplianceCertificate.sol` — new ERC-721 | ✅ Deployed | `0xC327A527B81402495f343277E37AE19b4112749d` |
-| 3 | `CapRegistry.sol` — batch + reporting year | ✅ Deployed | `0x495e718979D882024CAea4613D7b05F9865bC652` |
-| 4 | `CapCheck.sol` — NFT wiring + year param | ✅ Deployed | `0xbeA50F98e24F03D6A901897C2B520636d19B9043` |
+| 2 | `ComplianceCertificate.sol` — new ERC-721 | ✅ Deployed | `0xF91b8DDf2a4110A897204206714E5B90CAd2C8D5` |
+| 3 | `CapRegistry.sol` — batch + reporting year + ISO 14064 Scope enum | ✅ Deployed | `0x4460Be641B40484bBD25231f594158531e84e108` |
+| 4 | `CapCheck.sol` — NFT wiring + year param | ✅ Deployed | `0x7E2cc776495bb4565C28F60E3a708a44314a2965` |
 | 5 | Gas optimizations across all contracts | ✅ Done | unchecked loops, cached vars, FHE.allow fix |
 | 6 | 31 Hardhat tests (all passing) | ✅ Done | CapRegistry 23 + CapCheck 8 |
 | 7 | Frontend: reporting year pickers | ✅ Done | dashboard.tsx SubmitEmissions + ComplianceCheck |
 | 8 | Frontend: AuditTimer banner | ✅ Done | Live countdown to grant expiry |
 | 9 | Frontend: Certificate tab + download | ✅ Done | CertificateView, .txt download |
-| 10 | Frontend: batchSubmitEmissions UI hook | ✅ Done | useCovertMrv.ts |
-| 11 | Enterprise API: `POST /api/submit` | ✅ Done | HMAC-SHA256 auth, FHE server-side encrypt |
-| 12 | `vercel.json` API route | ✅ Done | `/api/*` rewrites before SPA fallback |
-| 13 | `tasks/deploy.ts` — full auto-deploy | ✅ Done | Deploys+wires+generates contracts.ts |
-| 14 | `docs.tsx` Wave 3 docs | ✅ Done | Changelog, addresses, API section, FAQ |
-| 15 | `README.md` rewrite | ✅ Done | Wave 3 badges, deliverables table |
-| 16 | `ARCHITECTURE.md` update | ✅ Done | Wave 3 header + diagram |
-| 17 | Git push to `0xelan/CovertMRV-` | ✅ Done | Commit `092f704`, master branch |
+| 10 | Frontend: ISO 14064 Scope 1/2/3 selector | ✅ Done | Interactive 3-card selector in SubmitEmissions |
+| 11 | Frontend: Batch Submit UI panel | ✅ Done | Add/remove rows, gas estimate, expandable section |
+| 12 | Frontend: 3-contract Overview cards | ✅ Done | ComplianceCertificate card added, 4-stat grid |
+| 13 | Frontend: Certificate balance in stats | ✅ Done | NFT balance shown in Overview 4-column stat bar |
+| 14 | Enterprise API: `POST /api/submit` | ✅ Done | HMAC-SHA256 auth, FHE server-side encrypt |
+| 15 | `vercel.json` API route | ✅ Done | `/api/*` rewrites before SPA fallback |
+| 16 | `tasks/deploy.ts` — full auto-deploy | ✅ Done | Deploys+wires+generates contracts.ts |
+| 17 | `docs.tsx` Wave 3 docs | ✅ Done | Changelog, addresses, API section, FAQ |
+| 18 | `README.md` rewrite | ✅ Done | Wave 3 badges, deliverables table |
+| 19 | `ARCHITECTURE.md` update | ✅ Done | New addresses, 3-contract diagram, Scope enum docs |
+| 20 | Git push to `0xelan/CovertMRV-` | ✅ Done | All changes pushed, master branch |
 
 ---
 
-## 2. Deployed Contracts — Arbitrum Sepolia
+## 2. Deployed Contracts — Arbitrum Sepolia (Re-deployed with ISO Scope)
 
-All three contracts were deployed by a single Hardhat task and are permanently wired together.
+All three contracts re-deployed with the updated `CapRegistry` that includes the ISO 14064 Scope enum.
 
 | Contract | Address | Deployer/Owner |
 |----------|---------|----------------|
-| `CapRegistry.sol` | `0x495e718979D882024CAea4613D7b05F9865bC652` | `0x2301CD93feC8249219b4b661b4bc81889b494De6` |
-| `CapCheck.sol` | `0xbeA50F98e24F03D6A901897C2B520636d19B9043` | `0x2301CD93feC8249219b4b661b4bc81889b494De6` |
-| `ComplianceCertificate.sol` | `0xC327A527B81402495f343277E37AE19b4112749d` | `0x2301CD93feC8249219b4b661b4bc81889b494De6` |
+| `CapRegistry.sol` | `0x4460Be641B40484bBD25231f594158531e84e108` | `0x2301CD93feC8249219b4b661b4bc81889b494De6` |
+| `CapCheck.sol` | `0x7E2cc776495bb4565C28F60E3a708a44314a2965` | `0x2301CD93feC8249219b4b661b4bc81889b494De6` |
+| `ComplianceCertificate.sol` | `0xF91b8DDf2a4110A897204206714E5B90CAd2C8D5` | `0x2301CD93feC8249219b4b661b4bc81889b494De6` |
 
 ### Contract Wiring Graph
 ```
@@ -72,22 +75,43 @@ CapRegistry ←── CapCheck ────────────────�
 
 ### 3.1 `contracts/CapRegistry.sol` (Updated)
 
-**New function: `submitEmissions`** — added `_reportingYear` parameter
+**New: ISO 14064 Scope enum** — classifies emissions by GHG Protocol scope
+```solidity
+enum Scope { SCOPE1, SCOPE2, SCOPE3 }
+```
+- `SCOPE1` — Direct emissions (combustion, process, fugitive)
+- `SCOPE2` — Indirect energy (purchased electricity, heat, steam)
+- `SCOPE3` — Value chain (travel, supply chain, waste)
+
+Added `scope` field to `FacilityData` struct. Both `submitEmissions` and `batchSubmitEmissions` accept `Scope _scope` as a 4th parameter. `getFacilityScope(address, facilityId)` view accessor for auditors. `EmissionsSubmitted` event now includes `Scope scope` as 5th indexed field.
+
+**Updated function signatures after ISO scope addition:**
 ```solidity
 function submitEmissions(
     uint256 _facilityId,
     InEuint64 calldata _encEmissions,
-    uint256 _reportingYear          // ← NEW
+    uint256 _reportingYear,
+    Scope _scope                    // ← NEW ISO 14064 classification
+) external
+
+function batchSubmitEmissions(
+    uint256[] calldata _facilityIds,
+    InEuint64[] calldata _encEmissions,
+    uint256 _reportingYear,
+    Scope _scope                    // ← same scope applied to all in batch
 ) external
 ```
-Stores `_reportingYear` in `FacilityData.reportingYear`. Emits `EmissionsSubmitted(company, facilityId, block.timestamp, reportingYear)`.
+
+**New function: `submitEmissions`** — added `_reportingYear` parameter (prior wave)
+Stores `_reportingYear` in `FacilityData.reportingYear`. Emits `EmissionsSubmitted(company, facilityId, block.timestamp, reportingYear, scope)`.
 
 **New function: `batchSubmitEmissions`** — batch of up to 50 facilities
 ```solidity
 function batchSubmitEmissions(
     uint256[] calldata _facilityIds,
     InEuint64[] calldata _encEmissions,
-    uint256 _reportingYear
+    uint256 _reportingYear,
+    Scope _scope
 ) external
 ```
 Single transaction for multiple facilities. `require(len <= 50)` cap prevents gas limit overflow on FHE coprocessor. Used by the Enterprise API endpoint.
@@ -187,9 +211,9 @@ const certificateBalance = useReadContract({
 ```
 
 **Updated writes:**
-- `submitEmissions(facilityId, tonnes, reportingYear)` — 3rd arg for reporting year, 800k gas
+- `submitEmissions(facilityId, tonnes, reportingYear, scope)` — 4th arg for ISO 14064 scope (default 0 = Scope 1), 800k gas
 - `checkCompliance(company, reportingYear)` — 2nd arg for year, 900k gas
-- `batchSubmitEmissions(facilityIds[], tonnesArr[], reportingYear)` — encrypts all values client-side, submits batch TX at 1.2M gas
+- `batchSubmitEmissions(facilityIds[], tonnesArr[], reportingYear, scope)` — encrypts all values client-side, submits batch TX at 1.2M gas
 
 **New return values:**
 ```typescript
@@ -224,7 +248,29 @@ const GAS = {
 **`SubmitEmissions` component changes:**
 - Added `reportingYear` state (default: current year)
 - Numeric year picker field below facility/emissions inputs
-- Passes `reportingYear` to `ctx.submitEmissions(facilityId, tonnes, reportingYear)`
+- **ISO 14064 Scope selector** — interactive 3-card grid between year and emissions inputs:
+  - Scope 1 — Direct (combustion, process, fugitive)
+  - Scope 2 — Indirect Energy (purchased electricity, heat, steam)
+  - Scope 3 — Value Chain (travel, supply chain, waste)
+  - Selected state: `border-emerald/60 bg-emerald/[0.08]`
+- Passes `scope` and `reportingYear` to `ctx.submitEmissions(facilityId, tonnes, year, scope)`
+
+**Batch Submit panel (NEW collapsible section):**
+- Toggle opens/closes with animated `ChevronRight` rotation
+- Shows gas estimate: `~${(1_200_000 + validRows.length * 200_000).toLocaleString()}`
+- Dynamic row list: each row has facilityId + tonnes inputs + Trash2 delete button
+- "Add facility" button (Plus icon) appends blank row
+- Submit button shows count of valid rows (both fields filled)
+- On success: Arbiscan link to batch transaction hash
+- Shares the same ISO scope and reporting year as single submit form
+
+**Overview stats grid (4-column):**
+- Added "Certificates" stat showing `certificateBalance` NFT count as 3rd stat
+- Changed from `grid-cols-3` to `grid-cols-4`
+
+**Overview contracts section (3-column):**
+- Added `<ContractCard label="ComplianceCertificate" address={COMPLIANCE_CERTIFICATE_ADDRESS} />`
+- Changed from `md:grid-cols-2` to `md:grid-cols-3`
 
 **`ComplianceCheck` component changes:**
 - Added `reportingYear` state (default: current year)
@@ -449,10 +495,11 @@ Per Nature (2023): 57% of German executives cite "anxiety about core data exposu
 | ebool-only on-chain result | ✅ | ❌ |
 | Time-bounded cryptographic audit access | ✅ | ❌ |
 | On-chain FHE in production (CoFHE/Fhenix) | ✅ | ❌ |
+| ISO 14064 Scope 1/2/3 classification on-chain | ✅ | ❌ |
+| Batch facility submission with UI | ✅ | ❌ |
 | No Verra dependency | ✅ | Toucan/KlimaDAO ❌ |
 | Compliance certificate NFT on compliance settle | ✅ | KlimaDAO has retirement cert (not compliance) |
 | Enterprise REST API with server-side FHE | ✅ | ❌ |
-| Batch facility submission | ✅ | ❌ |
 
 ### Market Size — Why We Will Win
 
@@ -475,7 +522,9 @@ Per Nature (2023): 57% of German executives cite "anxiety about core data exposu
 | NFT retirement certificate | KlimaDAO/Carbonmark UX pattern | ✅ ComplianceCertificate ERC-721 |
 | Time-bounded audit access UX | No competitor has it | ✅ AuditTimer banner |
 | Batch facility submission | Competitor gap | ✅ `batchSubmitEmissions` |
-| ISO 14064-1 / GHG Protocol alignment | Allinfra has it | 🔄 Wave 4 |
+| ISO 14064-1 / GHG Protocol alignment — Scope 1/2/3 enum | Allinfra has it | ✅ Added to CapRegistry + UI |
+| Batch Submit UI panel | Competitor gap | ✅ Dashboard collapsible batch panel |
+| ComplianceCertificate card in Overview | UX gap | ✅ 3-contract overview + 4-stat grid |
 | ERP integration (SAP/Oracle) | Flowcarbon enterprise model | 🔄 Wave 4 |
 | Scope 3 supply chain proof | Research recommendation | 🔄 Wave 5 |
 
@@ -484,17 +533,19 @@ Per Nature (2023): 57% of German executives cite "anxiety about core data exposu
 ## 11. Production Checklist
 
 ### Contract Deployment ✅
-- [x] `CapRegistry` deployed + verified on Arb Sepolia
-- [x] `CapCheck` deployed + verified on Arb Sepolia
-- [x] `ComplianceCertificate` deployed + verified on Arb Sepolia
+- [x] `CapRegistry` deployed + verified on Arb Sepolia (`0x4460Be641B40484bBD25231f594158531e84e108`)
+- [x] `CapCheck` deployed + verified on Arb Sepolia (`0x7E2cc776495bb4565C28F60E3a708a44314a2965`)
+- [x] `ComplianceCertificate` deployed + verified on Arb Sepolia (`0xF91b8DDf2a4110A897204206714E5B90CAd2C8D5`)
 - [x] `CapCheck.setCertificate(ComplianceCertificate)` called
 - [x] `ComplianceCertificate.setCapCheck(CapCheck)` called
 - [x] All addresses in `deployments.json`
-- [x] `contracts.ts` regenerated with correct ABIs + addresses
+- [x] `contracts.ts` regenerated with correct ABIs + addresses (includes Scope enum in ABI)
+- [x] ISO 14064 Scope enum in `CapRegistry.sol`
+- [x] All 31 tests updated for new 4-param `submitEmissions` / `batchSubmitEmissions`
 
 ### Frontend ✅
 - [x] `npx tsc --noEmit` → 0 errors
-- [x] `npx vite build` → ✅ built in 14.27s, 0 errors
+- [x] `npx vite build` → ✅ 8773 modules transformed, 0 errors
 - [x] All 3 contract addresses wired via env-var fallback in `contracts.ts`
 - [x] All 3 ABIs include all Wave 3 functions
 - [x] Dashboard: reporting year pickers on submit + compliance check

@@ -163,7 +163,7 @@ export function useCovertMrv() {
   }, [publicClient, writeContractAsync]);
 
   const submitEmissions = useCallback(
-    async (facilityId: bigint, tonnes: bigint, reportingYear: number) => {
+    async (facilityId: bigint, tonnes: bigint, reportingYear: number, scope: number = 0) => {
       const { publicClient: pc, walletClient: wc } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
@@ -174,7 +174,7 @@ export function useCovertMrv() {
           address: CAP_REGISTRY_ADDRESS,
           abi: CAP_REGISTRY_ABI,
           functionName: "submitEmissions",
-          args: [facilityId, encrypted as never, BigInt(reportingYear)],
+          args: [facilityId, encrypted as never, BigInt(reportingYear), scope],
           gas: GAS.submitEmissions,
           ...fees,
         });
@@ -190,7 +190,7 @@ export function useCovertMrv() {
   );
 
   const batchSubmitEmissions = useCallback(
-    async (facilityIds_: bigint[], tonnesArr: bigint[], reportingYear: number) => {
+    async (facilityIds_: bigint[], tonnesArr: bigint[], reportingYear: number, scope: number = 0) => {
       const { publicClient: pc, walletClient: wc } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
@@ -206,7 +206,7 @@ export function useCovertMrv() {
           address: CAP_REGISTRY_ADDRESS,
           abi: CAP_REGISTRY_ABI,
           functionName: "batchSubmitEmissions",
-          args: [facilityIds_, encrypted as never, BigInt(reportingYear)],
+          args: [facilityIds_, encrypted as never, BigInt(reportingYear), scope],
           gas: GAS.batchSubmitEmissions,
           ...fees,
         });

@@ -56,7 +56,7 @@ describe("CapCheck", function () {
     const [encEmissions] = await companyClient
       .encryptInputs([Encryptable.uint64(emissions)])
       .execute();
-    await registry.connect(company).submitEmissions(1, encEmissions, YEAR);
+    await registry.connect(company).submitEmissions(1, encEmissions, YEAR, 0);
     await registry.aggregateTotal(company.address);
 
     const [encCap] = await ownerClient
@@ -129,7 +129,7 @@ describe("CapCheck", function () {
     const [encE] = await fx.companyClient
       .encryptInputs([Encryptable.uint64(1n)])
       .execute();
-    await fx.registry.connect(fx.company).submitEmissions(1, encE, YEAR);
+    await fx.registry.connect(fx.company).submitEmissions(1, encE, YEAR, 0);
     await fx.registry.aggregateTotal(fx.company.address);
     await expect(
       fx.check.checkCompliance(fx.company.address, YEAR)

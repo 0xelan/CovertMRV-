@@ -5,15 +5,15 @@ export const CHAIN_ID = 421614;
 
 export const COMPLIANCE_CERTIFICATE_ADDRESS =
   (import.meta.env.VITE_COMPLIANCE_CERTIFICATE_ADDRESS as `0x${string}` | undefined) ??
-  ("0xC327A527B81402495f343277E37AE19b4112749d" as `0x${string}`);
+  ("0xF91b8DDf2a4110A897204206714E5B90CAd2C8D5" as `0x${string}`);
 
 export const CAP_REGISTRY_ADDRESS =
   (import.meta.env.VITE_CAP_REGISTRY_ADDRESS as `0x${string}` | undefined) ??
-  ("0x495e718979D882024CAea4613D7b05F9865bC652" as `0x${string}`);
+  ("0x4460Be641B40484bBD25231f594158531e84e108" as `0x${string}`);
 
 export const CAP_CHECK_ADDRESS =
   (import.meta.env.VITE_CAP_CHECK_ADDRESS as `0x${string}` | undefined) ??
-  ("0xbeA50F98e24F03D6A901897C2B520636d19B9043" as `0x${string}`);
+  ("0x7E2cc776495bb4565C28F60E3a708a44314a2965" as `0x${string}`);
 
 export const CAP_REGISTRY_ABI = [
   {
@@ -131,6 +131,12 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "uint256",
         "name": "reportingYear",
         "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "enum CapRegistry.Scope",
+        "name": "scope",
+        "type": "uint8"
       }
     ],
     "name": "EmissionsSubmitted",
@@ -280,6 +286,11 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "uint256",
         "name": "_reportingYear",
         "type": "uint256"
+      },
+      {
+        "internalType": "enum CapRegistry.Scope",
+        "name": "_scope",
+        "type": "uint8"
       }
     ],
     "name": "batchSubmitEmissions",
@@ -387,6 +398,30 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_company",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_facilityId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getFacilityScope",
+    "outputs": [
+      {
+        "internalType": "enum CapRegistry.Scope",
+        "name": "",
+        "type": "uint8"
       }
     ],
     "stateMutability": "view",
@@ -700,6 +735,11 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "uint256",
         "name": "_reportingYear",
         "type": "uint256"
+      },
+      {
+        "internalType": "enum CapRegistry.Scope",
+        "name": "_scope",
+        "type": "uint8"
       }
     ],
     "name": "submitEmissions",
