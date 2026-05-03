@@ -11,6 +11,7 @@ contract CapRegistry is DisclosureACL {
     struct FacilityData {
         euint64 encryptedEmissions;
         uint256 reportingPeriod;
+        uint256 reportingYear;
         bool submitted;
     }
 
@@ -28,7 +29,8 @@ contract CapRegistry is DisclosureACL {
     event EmissionsSubmitted(
         address indexed company,
         uint256 indexed facilityId,
-        uint256 reportingPeriod
+        uint256 reportingPeriod,
+        uint256 reportingYear
     );
     event TotalAggregated(address indexed company, uint256 facilityCount);
     event CapSet(address indexed company);
@@ -42,9 +44,13 @@ contract CapRegistry is DisclosureACL {
     // ─── Emitter functions ──────────────────────────────────────────────
 
     /// @notice Submit an encrypted emissions value for a facility.
+    /// @param _facilityId    Caller-assigned facility identifier.
+    /// @param _encEmissions  Client-encrypted uint64 emissions value.
+    /// @param _reportingYear ISO year for this report (e.g. 2025).
     function submitEmissions(
         uint256 _facilityId,
-        InEuint64 calldata _encEmissions
+        InEuint64 calldata _encEmissions,
+        uint256 _reportingYear
     ) external {
         require(
             roles[msg.sender] == Role.EMITTER || msg.sender == owner,
@@ -53,12 +59,13 @@ contract CapRegistry is DisclosureACL {
 
         euint64 emissions = FHE.asEuint64(_encEmissions);
         FHE.allowThis(emissions);
-        FHE.allowSender(emissions);
+        FHE.allow(emissions, msg.sender);
 
         FacilityData storage f = facilityEmissions[msg.sender][_facilityId];
         bool isNew = !f.submitted;
         f.encryptedEmissions = emissions;
         f.reportingPeriod = block.timestamp;
+        f.reportingYear = _reportingYear;
         f.submitted = true;
 
         if (isNew) {
@@ -66,7 +73,50 @@ contract CapRegistry is DisclosureACL {
         }
         hasSubmitted[msg.sender] = true;
 
-        emit EmissionsSubmitted(msg.sender, _facilityId, block.timestamp);
+        emit EmissionsSubmitted(msg.sender, _facilityId, block.timestamp, _reportingYear);
+    }
+
+    /// @notice Submit emissions for multiple facilities in a single transaction.
+    ///         All facilities share the same reporting year.
+    /// @param _facilityIds    Array of facility identifiers.
+    /// @param _encEmissions   Parallel array of encrypted emissions values.
+    /// @param _reportingYear  ISO year for this batch report (e.g. 2025).
+    function batchSubmitEmissions(
+        uint256[] calldata _facilityIds,
+        InEuint64[] calldata _encEmissions,
+        uint256 _reportingYear
+    ) external {
+        require(
+            roles[msg.sender] == Role.EMITTER || msg.sender == owner,
+            "Must be EMITTER"
+        );
+        uint256 len = _facilityIds.length;
+        require(len > 0, "Empty batch");
+        require(len == _encEmissions.length, "Length mismatch");
+
+        address sender = msg.sender;
+        uint256 ts = block.timestamp;
+
+        for (uint256 i = 0; i < len; ) {
+            uint256 fid = _facilityIds[i];
+            euint64 emissions = FHE.asEuint64(_encEmissions[i]);
+            FHE.allowThis(emissions);
+            FHE.allow(emissions, sender);
+
+            FacilityData storage f = facilityEmissions[sender][fid];
+            if (!f.submitted) {
+                companyFacilities[sender].push(fid);
+            }
+            f.encryptedEmissions = emissions;
+            f.reportingPeriod = ts;
+            f.reportingYear = _reportingYear;
+            f.submitted = true;
+
+            emit EmissionsSubmitted(sender, fid, ts, _reportingYear);
+
+            unchecked { ++i; }
+        }
+        hasSubmitted[sender] = true;
     }
 
     /// @notice Aggregate all submitted facility emissions for a company
@@ -74,14 +124,16 @@ contract CapRegistry is DisclosureACL {
     ///         resulting total handle is only decryptable by the company.
     function aggregateTotal(address _company) external {
         uint256[] memory facilities = companyFacilities[_company];
-        require(facilities.length > 0, "No facilities");
+        uint256 len = facilities.length;
+        require(len > 0, "No facilities");
 
         euint64 total = facilityEmissions[_company][facilities[0]].encryptedEmissions;
 
-        for (uint256 i = 1; i < facilities.length; i++) {
+        for (uint256 i = 1; i < len; ) {
             FacilityData storage f = facilityEmissions[_company][facilities[i]];
             require(f.submitted, "Facility missing");
             total = FHE.add(total, f.encryptedEmissions);
+            unchecked { ++i; }
         }
 
         companyTotals[_company] = total;

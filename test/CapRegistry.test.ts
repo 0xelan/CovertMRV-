@@ -41,7 +41,7 @@ describe("CapRegistry", function () {
         .encryptInputs([Encryptable.uint64(12500n)])
         .execute();
 
-      await expect(registry.connect(company).submitEmissions(1, enc))
+      await expect(registry.connect(company).submitEmissions(1, enc, 2025))
         .to.emit(registry, "EmissionsSubmitted");
 
       expect(await registry.isFacilitySubmitted(company.address, 1)).to.equal(
@@ -59,7 +59,7 @@ describe("CapRegistry", function () {
         .execute();
 
       await expect(
-        registry.connect(other).submitEmissions(1, enc)
+        registry.connect(other).submitEmissions(1, enc, 2025)
       ).to.be.revertedWith("Must be EMITTER");
     });
 
@@ -76,8 +76,8 @@ describe("CapRegistry", function () {
         .encryptInputs([Encryptable.uint64(200n)])
         .execute();
 
-      await registry.connect(company).submitEmissions(1, a);
-      await registry.connect(company).submitEmissions(1, b);
+      await registry.connect(company).submitEmissions(1, a, 2025);
+      await registry.connect(company).submitEmissions(1, b, 2025);
 
       expect(await registry.getFacilityCount(company.address)).to.equal(1n);
     });
@@ -105,7 +105,7 @@ describe("CapRegistry", function () {
         const [enc] = await companyClient
           .encryptInputs([Encryptable.uint64(value)])
           .execute();
-        await registry.connect(company).submitEmissions(id, enc);
+        await registry.connect(company).submitEmissions(id, enc, 2025);
       }
 
       await expect(registry.aggregateTotal(company.address)).to.emit(
@@ -168,7 +168,7 @@ describe("CapRegistry", function () {
       const [enc] = await companyClient
         .encryptInputs([Encryptable.uint64(9999n)])
         .execute();
-      await registry.connect(company).submitEmissions(1, enc);
+      await registry.connect(company).submitEmissions(1, enc, 2025);
       await registry.aggregateTotal(company.address);
 
       await expect(
@@ -196,7 +196,7 @@ describe("CapRegistry", function () {
       const [enc] = await companyClient
         .encryptInputs([Encryptable.uint64(1n)])
         .execute();
-      await registry.connect(company).submitEmissions(1, enc);
+      await registry.connect(company).submitEmissions(1, enc, 2025);
       await registry.aggregateTotal(company.address);
       await registry
         .connect(company)
@@ -217,7 +217,7 @@ describe("CapRegistry", function () {
       const [enc] = await companyClient
         .encryptInputs([Encryptable.uint64(1n)])
         .execute();
-      await registry.connect(company).submitEmissions(1, enc);
+      await registry.connect(company).submitEmissions(1, enc, 2025);
       await registry.aggregateTotal(company.address);
       await registry
         .connect(company)
@@ -227,6 +227,53 @@ describe("CapRegistry", function () {
       expect(
         await registry.isAuditActive(company.address, auditor.address)
       ).to.equal(false);
+    });
+  });
+
+  describe("Batch submissions", function () {
+    it("batchSubmitEmissions submits multiple facilities in one tx", async function () {
+      const { registry, company, companyClient } = await loadFixture(
+        deployFixture
+      );
+      await registry.connect(company).registerAsEmitter();
+
+      const values = [1000n, 2000n, 3000n];
+      const facilityIds = [10, 20, 30];
+      const encItems = await companyClient
+        .encryptInputs(values.map((v) => Encryptable.uint64(v)))
+        .execute();
+
+      await expect(
+        registry
+          .connect(company)
+          .batchSubmitEmissions(facilityIds, encItems, 2025)
+      ).to.emit(registry, "EmissionsSubmitted");
+
+      expect(await registry.getFacilityCount(company.address)).to.equal(3n);
+    });
+
+    it("batchSubmitEmissions reverts on length mismatch", async function () {
+      const { registry, company, companyClient } = await loadFixture(
+        deployFixture
+      );
+      await registry.connect(company).registerAsEmitter();
+
+      const [enc] = await companyClient
+        .encryptInputs([Encryptable.uint64(100n)])
+        .execute();
+
+      await expect(
+        registry.connect(company).batchSubmitEmissions([1, 2], [enc], 2025)
+      ).to.be.revertedWith("Length mismatch");
+    });
+
+    it("batchSubmitEmissions reverts on empty batch", async function () {
+      const { registry, company } = await loadFixture(deployFixture);
+      await registry.connect(company).registerAsEmitter();
+
+      await expect(
+        registry.connect(company).batchSubmitEmissions([], [], 2025)
+      ).to.be.revertedWith("Empty batch");
     });
   });
 });

@@ -171,11 +171,12 @@ export async function decryptUint64(
   }
 
   onStep?.("Creating permit");
-  await c.permits.getOrCreateSelfPermit(await publicClient.getChainId());
+  await c.permits.getOrCreateSelfPermit();
   onStep?.("Decrypting");
   try {
     const result = (await c
       .decryptForView(handle, FheTypes.Uint64)
+      .set404RetryTimeout(15_000)
       .execute()) as bigint;
     if (typeof window !== "undefined") {
       try {
@@ -198,10 +199,11 @@ export async function decryptUint64(
           /* ignore */
         }
       }
-      await c.permits.getOrCreateSelfPermit(await publicClient.getChainId());
+      await c.permits.getOrCreateSelfPermit();
       onStep?.("Decrypting (retry)");
       const result = (await c
         .decryptForView(handle, FheTypes.Uint64)
+        .set404RetryTimeout(15_000)
         .execute()) as bigint;
       if (typeof window !== "undefined") {
         try {
@@ -245,10 +247,13 @@ export async function decryptBool(
   }
 
   onStep?.("Creating permit");
-  await c.permits.getOrCreateSelfPermit(await publicClient.getChainId());
+  await c.permits.getOrCreateSelfPermit();
   onStep?.("Decrypting");
   try {
-    const result = (await c.decryptForView(handle, FheTypes.Bool).execute()) as boolean;
+    const result = (await c
+      .decryptForView(handle, FheTypes.Bool)
+      .set404RetryTimeout(15_000)
+      .execute()) as boolean;
     if (typeof window !== "undefined") {
       try {
         window.sessionStorage.setItem(cacheKey, String(result));
@@ -269,9 +274,12 @@ export async function decryptBool(
           /* ignore */
         }
       }
-      await c.permits.getOrCreateSelfPermit(await publicClient.getChainId());
+      await c.permits.getOrCreateSelfPermit();
       onStep?.("Decrypting (retry)");
-      const result = (await c.decryptForView(handle, FheTypes.Bool).execute()) as boolean;
+      const result = (await c
+        .decryptForView(handle, FheTypes.Bool)
+        .set404RetryTimeout(15_000)
+        .execute()) as boolean;
       if (typeof window !== "undefined") {
         try {
           window.sessionStorage.setItem(cacheKey, String(result));
@@ -304,7 +312,7 @@ export async function decryptForSettlement(
   const c = await getFheClient(publicClient, walletClient);
   const handle = typeof ctHash === "string" ? BigInt(ctHash) : ctHash;
   onStep?.("Creating permit");
-  await c.permits.getOrCreateSelfPermit(await publicClient.getChainId());
+  await c.permits.getOrCreateSelfPermit();
   onStep?.("Decrypting for settlement");
   const result = (await c.decryptForTx(handle).withPermit().execute()) as {
     decryptedValue: unknown;

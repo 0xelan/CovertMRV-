@@ -27,6 +27,8 @@ import {
   CAP_CHECK_ADDRESS,
   CAP_REGISTRY_ABI,
   CAP_REGISTRY_ADDRESS,
+  COMPLIANCE_CERTIFICATE_ABI,
+  COMPLIANCE_CERTIFICATE_ADDRESS,
 } from "@/config/contracts";
 import { getGasFees } from "@/lib/gas";
 import {
@@ -42,6 +44,7 @@ import { useFHEStatus } from "./useFHEStatus";
 const GAS = {
   registerAsEmitter: 150_000n,
   submitEmissions: 800_000n,
+  batchSubmitEmissions: 1_200_000n,
   aggregateBase: 400_000n,
   aggregatePerFacility: 250_000n,
   setCap: 600_000n,
@@ -123,6 +126,22 @@ export function useCovertMrv() {
     query: { enabled: !!address },
   });
 
+  const auditGrant = useReadContract({
+    address: CAP_REGISTRY_ADDRESS,
+    abi: CAP_REGISTRY_ABI,
+    functionName: "auditGrants",
+    args: address ? [address, address] : undefined,
+    query: { enabled: !!address },
+  });
+
+  const certificateBalance = useReadContract({
+    address: COMPLIANCE_CERTIFICATE_ADDRESS || undefined,
+    abi: COMPLIANCE_CERTIFICATE_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && !!COMPLIANCE_CERTIFICATE_ADDRESS },
+  });
+
   function ensureClients() {
     if (!publicClient || !walletClient) {
       throw new Error("Wallet not connected");
@@ -144,7 +163,7 @@ export function useCovertMrv() {
   }, [publicClient, writeContractAsync]);
 
   const submitEmissions = useCallback(
-    async (facilityId: bigint, tonnes: bigint) => {
+    async (facilityId: bigint, tonnes: bigint, reportingYear: number) => {
       const { publicClient: pc, walletClient: wc } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
@@ -155,8 +174,40 @@ export function useCovertMrv() {
           address: CAP_REGISTRY_ADDRESS,
           abi: CAP_REGISTRY_ABI,
           functionName: "submitEmissions",
-          args: [facilityId, encrypted as never],
+          args: [facilityId, encrypted as never, BigInt(reportingYear)],
           gas: GAS.submitEmissions,
+          ...fees,
+        });
+        fhe.setStep("READY");
+        return hash;
+      } catch (err) {
+        fhe.setStep("ERROR", describeFheError(err));
+        throw err;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [publicClient, walletClient, writeContractAsync],
+  );
+
+  const batchSubmitEmissions = useCallback(
+    async (facilityIds_: bigint[], tonnesArr: bigint[], reportingYear: number) => {
+      const { publicClient: pc, walletClient: wc } = ensureClients();
+      try {
+        fhe.setStep("ENCRYPTING");
+        const encryptables = tonnesArr.map((v) => ({ data: v, utype: 5 as const }));
+        const { Encryptable } = await import("@cofhe/sdk");
+        const encrypted = await (await import("@/lib/fhe").then((m) => m.getFheClient(pc, wc)))
+          .encryptInputs(encryptables.map((e) => Encryptable.uint64(e.data)))
+          .onStep((s: unknown) => fhe.setLabel(String(s)))
+          .execute();
+        fhe.setStep("COMPUTING");
+        const fees = await getGasFees(pc);
+        const hash = await writeContractAsync({
+          address: CAP_REGISTRY_ADDRESS,
+          abi: CAP_REGISTRY_ABI,
+          functionName: "batchSubmitEmissions",
+          args: [facilityIds_, encrypted as never, BigInt(reportingYear)],
+          gas: GAS.batchSubmitEmissions,
           ...fees,
         });
         fhe.setStep("READY");
@@ -264,13 +315,13 @@ export function useCovertMrv() {
   );
 
   const checkCompliance = useCallback(
-    async (company: `0x${string}`) => {
+    async (company: `0x${string}`, reportingYear: number) => {
       const fees = await getGasFees(publicClient);
       return writeContractAsync({
         address: CAP_CHECK_ADDRESS,
         abi: CAP_CHECK_ABI,
         functionName: "checkCompliance",
-        args: [company],
+        args: [company, BigInt(reportingYear)],
         gas: GAS.checkCompliance,
         ...fees,
       });
@@ -398,6 +449,9 @@ export function useCovertMrv() {
     complianceHandle: (complianceHandle.data ?? 0n) as bigint,
     settled: settledStatus.data as readonly [boolean, boolean] | undefined,
     lastCheckedAt: (lastCheckedAt.data ?? 0n) as bigint,
+    auditGrantExpiry: (auditGrant.data as readonly [bigint, boolean] | undefined)?.[0] ?? 0n,
+    auditGrantActive: (auditGrant.data as readonly [bigint, boolean] | undefined)?.[1] ?? false,
+    certificateBalance: (certificateBalance.data ?? 0n) as bigint,
     // FHE step state
     fheStep: fhe.step,
     fheStepLabel: fhe.stepLabel,
@@ -414,10 +468,13 @@ export function useCovertMrv() {
       complianceHandle.refetch();
       settledStatus.refetch();
       lastCheckedAt.refetch();
+      auditGrant.refetch();
+      certificateBalance.refetch();
     },
     // actions
     registerAsEmitter,
     submitEmissions,
+    batchSubmitEmissions,
     aggregateTotal,
     setCap,
     grantCheckAccess,

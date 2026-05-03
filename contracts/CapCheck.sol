@@ -4,17 +4,29 @@ pragma solidity ^0.8.25;
 import {FHE, euint64, ebool} from "@fhenixprotocol/cofhe-contracts/FHE.sol";
 import {CapRegistry} from "./CapRegistry.sol";
 
+/// @notice Minimal interface so CapCheck can mint certificates without
+///         importing the full ComplianceCertificate contract.
+interface IComplianceCertificate {
+    function mintCertificate(
+        address company,
+        uint256 reportingYear,
+        bool compliant
+    ) external returns (uint256 tokenId);
+}
+
 /// @title CapCheck
 /// @notice Encrypted compliance verification engine. Compares a company's
 ///         encrypted emissions total against its encrypted regulatory cap
 ///         and exposes only an encrypted boolean (pass/fail).
 contract CapCheck {
     CapRegistry public immutable registry;
+    IComplianceCertificate public certificate;
     address public owner;
 
     struct ComplianceResult {
         ebool encryptedResult;
         uint256 timestamp;
+        uint256 reportingYear;
         bool exists;
         bool settled;
         bool plaintextResult;
@@ -23,18 +35,28 @@ contract CapCheck {
     // company => latest compliance result
     mapping(address => ComplianceResult) public complianceResults;
 
-    event ComplianceChecked(address indexed company, uint256 timestamp);
-    event ComplianceSettled(address indexed company, bool result);
+    event ComplianceChecked(address indexed company, uint256 timestamp, uint256 reportingYear);
+    event ComplianceSettled(address indexed company, bool result, uint256 tokenId);
 
     constructor(address _registry) {
         registry = CapRegistry(_registry);
         owner = msg.sender;
     }
 
+    /// @notice Link the ComplianceCertificate contract. Called once by owner
+    ///         after deploying both CapCheck and ComplianceCertificate.
+    function setCertificate(address _certificate) external {
+        require(msg.sender == owner, "Only owner");
+        require(_certificate != address(0), "zero address");
+        certificate = IComplianceCertificate(_certificate);
+    }
+
     /// @notice Run the encrypted FHE.lte(total, cap) comparison and store
     ///         the resulting ebool. Both the company and the regulator
     ///         (owner) get decrypt access.
-    function checkCompliance(address _company) external {
+    /// @param _company      Company address.
+    /// @param _reportingYear The ISO year this compliance check covers.
+    function checkCompliance(address _company, uint256 _reportingYear) external {
         euint64 total = registry.getCompanyTotal(_company);
         euint64 cap = registry.getRegulatoryCap(_company);
         require(FHE.isInitialized(total), "No emissions total");
@@ -52,12 +74,13 @@ contract CapCheck {
         ComplianceResult storage stored = complianceResults[_company];
         stored.encryptedResult = result;
         stored.timestamp = block.timestamp;
+        stored.reportingYear = _reportingYear;
         stored.exists = true;
         // Reset settlement state for the new check.
         stored.settled = false;
         stored.plaintextResult = false;
 
-        emit ComplianceChecked(_company, block.timestamp);
+        emit ComplianceChecked(_company, block.timestamp, _reportingYear);
     }
 
     /// @notice Settle the compliance result on-chain using the value +
@@ -81,7 +104,17 @@ contract CapCheck {
         stored.settled = true;
         stored.plaintextResult = _value;
 
-        emit ComplianceSettled(_company, _value);
+        // Mint a compliance certificate NFT if the certificate contract is set.
+        uint256 tokenId = 0;
+        if (address(certificate) != address(0)) {
+            tokenId = certificate.mintCertificate(
+                _company,
+                stored.reportingYear,
+                _value
+            );
+        }
+
+        emit ComplianceSettled(_company, _value, tokenId);
     }
 
     function getComplianceResult(

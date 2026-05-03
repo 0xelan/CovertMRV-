@@ -22,6 +22,8 @@ import {
   Loader2,
   AlertTriangle,
   UserCheck,
+  Award,
+  Download,
 } from "lucide-react";
 import { z } from "zod";
 import { isAddress } from "viem";
@@ -39,7 +41,7 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 
 const dashboardSearchSchema = z.object({
   view: z
-    .enum(["overview", "submit", "check", "audit", "console"])
+    .enum(["overview", "submit", "check", "audit", "console", "certificate"])
     .catch("overview"),
 });
 
@@ -54,6 +56,7 @@ const NAV = [
   { id: "check", label: "Compliance Check", icon: ShieldCheck },
   { id: "audit", label: "Audit Access", icon: KeyRound },
   { id: "console", label: "Disclosure Console", icon: Eye },
+  { id: "certificate", label: "Certificate", icon: Award },
 ] as const;
 
 const ROLE_LABELS = ["None", "Emitter", "Auditor", "Regulator", "Admin"] as const;
@@ -152,6 +155,7 @@ function Dashboard() {
           {view === "check" && <ComplianceCheck ctx={ctx} />}
           {view === "audit" && <AuditAccess ctx={ctx} />}
           {view === "console" && <DisclosureConsole ctx={ctx} />}
+          {view === "certificate" && <CertificateView ctx={ctx} />}
         </main>
       </div>
     </div>
@@ -675,6 +679,7 @@ const SUBMIT_STEPS = [
 function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const [facility, setFacility] = useState("");
   const [emissions, setEmissions] = useState("");
+  const [reportingYear, setReportingYear] = useState(String(new Date().getFullYear()));
   const [step, setStep] = useState(0);
   const [hash, setHash] = useState<`0x${string}` | undefined>();
   const [error, setError] = useState<string | null>(null);
@@ -703,7 +708,7 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     setStep(1);
     try {
       if (!ctx.fheReady) throw new Error("FHE client not ready — wait a moment then retry");
-      const h = await ctx.submitEmissions(BigInt(facility), BigInt(emissions));
+      const h = await ctx.submitEmissions(BigInt(facility), BigInt(emissions), Number(reportingYear));
       setHash(h);
     } catch (e) {
       setError((e as Error).message);
@@ -745,6 +750,18 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
                 value={facility}
                 onChange={(e) => setFacility(e.target.value)}
                 placeholder="e.g. 7"
+                className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-emerald"
+              />
+            </Field>
+            <Field label="Reporting Year">
+              <input
+                type="number"
+                required
+                min={2020}
+                max={2100}
+                value={reportingYear}
+                onChange={(e) => setReportingYear(e.target.value)}
+                placeholder="e.g. 2025"
                 className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-emerald"
               />
             </Field>
@@ -916,6 +933,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const [decrypting, setDecrypting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aggregating, setAggregating] = useState(false);
+  const [reportingYear, setReportingYear] = useState(String(new Date().getFullYear()));
   const tx = useWaitForTransactionReceipt({ hash });
 
   useEffect(() => {
@@ -930,6 +948,20 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const noTotal = !ctx.hasAggregated;
   const noCap = !ctx.hasCapSet;
   const canRun = !noTotal && !noCap;
+
+  const yearInput = (
+    <div className="flex items-center gap-3">
+      <label className="font-mono text-[11px] uppercase tracking-widest text-foreground/45">Reporting Year</label>
+      <input
+        type="number"
+        min={2020}
+        max={2100}
+        value={reportingYear}
+        onChange={(e) => setReportingYear(e.target.value)}
+        className="w-28 rounded-lg border border-foreground/15 bg-background px-3 py-2 font-mono text-sm outline-none focus:border-emerald"
+      />
+    </div>
+  );
 
   async function doAggregate() {
     if (!ctx.address) return;
@@ -953,7 +985,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     setHash(undefined);
     setStep(1);
     try {
-      const h = await ctx.checkCompliance(ctx.address as `0x${string}`);
+      const h = await ctx.checkCompliance(ctx.address as `0x${string}`, Number(reportingYear));
       setHash(h);
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
@@ -1037,6 +1069,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             {step === 1 || step === 2 ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
             {step === 4 ? "Re-run Compliance Check" : "Run Compliance Check"}
           </button>
+          <div className="mt-3">{yearInput}</div>
 
           <FHEStepper ctx={ctx} />
 
@@ -1282,6 +1315,7 @@ function AuditAccess({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
         title="Audit Access"
         desc="Issue time-bounded decrypt access to your aggregate emissions total. Auditors can verify quality. Access expires automatically — no manual revocation required."
       />
+      <AuditTimer ctx={ctx} />
       <div className="grid gap-6 p-10 lg:grid-cols-[1fr_1.4fr]">
         <form
           onSubmit={grant}
@@ -1588,6 +1622,229 @@ function DisclosureConsole({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
         )}
       </div>
     </>
+  );
+}
+
+/* -------------------- Certificate View -------------------- */
+
+function CertificateView({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
+  const [year, setYear] = useState(String(new Date().getFullYear()));
+
+  const settled = ctx.settled?.[0] ?? false;
+  const compliant = ctx.settled?.[1] ?? false;
+  const hasCert = settled && ctx.certificateBalance > 0n;
+
+  function downloadPdf() {
+    const company = ctx.address ?? "0x???";
+    const lines = [
+      "=================================================",
+      "   COVERTMRV COMPLIANCE CERTIFICATE",
+      "=================================================",
+      "",
+      `  Company:          ${company}`,
+      `  Reporting Year:   ${year}`,
+      `  Status:           ${compliant ? "COMPLIANT ✓" : "NON-COMPLIANT ✗"}`,
+      `  Issued at:        ${new Date().toUTCString()}`,
+      `  Chain:            Arbitrum Sepolia (421614)`,
+      `  CapCheck:         ${CAP_CHECK_ADDRESS}`,
+      "",
+      "  FHE Privacy Proof:",
+      "  - Raw facility data: ENCRYPTED (never revealed)",
+      "  - Aggregate total:   ENCRYPTED (never revealed)",
+      "  - Regulatory cap:    ENCRYPTED (never revealed)",
+      "  - Compliance result: ebool (only pass/fail visible)",
+      "",
+      "  Powered by CoFHE · Fhenix Protocol",
+      "=================================================",
+    ].join("\n");
+
+    const blob = new Blob([lines], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `CovertMRV-Certificate-${year}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <>
+      <PageHeader
+        index="05"
+        title="Compliance Certificate"
+        desc="Download your FHE-verified compliance certificate. Minted as an ERC-721 NFT on-chain when your compliance status is settled by the regulator."
+      />
+      <div className="p-10">
+        <div className="mb-6 flex items-center gap-4">
+          <label className="font-mono text-[11px] uppercase tracking-widest text-foreground/45">
+            Reporting Year
+          </label>
+          <input
+            type="number"
+            min={2020}
+            max={2100}
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            className="w-28 rounded-lg border border-foreground/15 bg-background px-3 py-2 font-mono text-sm outline-none focus:border-emerald"
+          />
+        </div>
+
+        {!settled && (
+          <div className="rounded-2xl border border-amber-warn/30 bg-amber-warn/5 p-8 text-center">
+            <Clock className="mx-auto h-10 w-10 text-amber-warn/60" />
+            <p className="mt-4 font-mono text-[13px] text-foreground/65">
+              No compliance result settled yet.
+            </p>
+            <p className="mt-1 text-[12px] text-foreground/45">
+              Complete a compliance check and have the regulator call{" "}
+              <code className="rounded bg-foreground/10 px-1 font-mono text-[11px]">
+                settleCompliance
+              </code>
+              .
+            </p>
+          </div>
+        )}
+
+        {settled && (
+          <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr]">
+            {/* Certificate card */}
+            <div
+              className={`relative overflow-hidden rounded-2xl border p-8 ${
+                compliant
+                  ? "border-emerald/40 bg-emerald/5"
+                  : "border-destructive/40 bg-destructive/5"
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-foreground/45">
+                    CovertMRV · Arbitrum Sepolia
+                  </p>
+                  <p className="mt-2 text-2xl font-bold tracking-tight">
+                    {compliant ? "COMPLIANT" : "NON-COMPLIANT"}
+                  </p>
+                  <p className="mt-1 font-mono text-sm text-foreground/60">
+                    Reporting Year {year}
+                  </p>
+                </div>
+                <Award
+                  className={`h-10 w-10 ${compliant ? "text-emerald" : "text-destructive/60"}`}
+                />
+              </div>
+
+              <div className="mt-6 space-y-2 rounded-xl border border-foreground/10 bg-background p-4">
+                <Row label="Company" value={shortAddress(ctx.address, 8)} />
+                <Row label="Result" value={compliant ? "ebool: true ✓" : "ebool: false ✗"} />
+                <Row label="CapCheck" value={shortAddress(CAP_CHECK_ADDRESS, 8)} />
+                <Row label="FHE Privacy" value="All inputs encrypted" />
+              </div>
+
+              <div className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-foreground/10 bg-background px-3 py-1.5 font-mono text-[10px] text-foreground/50">
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${hasCert ? "bg-emerald" : "bg-foreground/30"}`}
+                />
+                {hasCert
+                  ? `NFT minted · ${ctx.certificateBalance} cert(s) owned`
+                  : "NFT not yet minted"}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-foreground/10 bg-surface p-7">
+                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">
+                  Download Certificate
+                </p>
+                <p className="mt-3 text-[13px] leading-relaxed text-foreground/65">
+                  Export a signed compliance statement as a portable text file.
+                  The certificate encodes your company address, reporting year,
+                  FHE contract references, and compliance status.
+                </p>
+                <button
+                  onClick={downloadPdf}
+                  className="mt-5 inline-flex items-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background transition hover:bg-foreground/90"
+                >
+                  <Download className="h-4 w-4" />
+                  Download Certificate (.txt)
+                </button>
+              </div>
+
+              <div className="rounded-2xl border border-foreground/10 bg-surface p-7">
+                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">
+                  FHE Privacy Proof
+                </p>
+                <ul className="mt-4 space-y-2 text-[12px] text-foreground/65">
+                  {[
+                    ["Raw facility data", "Encrypted — never on-chain in plaintext"],
+                    ["Aggregate total", "Encrypted — even regulator cannot read"],
+                    ["Regulatory cap", "Encrypted — set by regulator privately"],
+                    ["Compliance result", "ebool only — pass/fail, nothing else"],
+                  ].map(([k, v]) => (
+                    <li key={k} className="flex items-start gap-2">
+                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-none text-emerald" />
+                      <span>
+                        <span className="font-semibold text-foreground/80">{k}:</span> {v}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 text-[12px]">
+      <span className="font-mono text-foreground/45">{label}</span>
+      <span className="font-mono text-foreground/75 truncate max-w-[180px]">{value}</span>
+    </div>
+  );
+}
+
+/* -------------------- Audit Timer -------------------- */
+
+function AuditTimer({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
+  const [now, setNow] = useState(Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const expiry = Number(ctx.auditGrantExpiry);
+  const hasGrant = expiry > 0;
+  const remaining = expiry - now;
+  const active = ctx.auditGrantActive && remaining > 0;
+
+  if (!hasGrant) return null;
+
+  return (
+    <div
+      className={`flex items-center gap-4 border-b px-10 py-3 ${
+        active
+          ? "border-emerald/20 bg-emerald/5"
+          : "border-destructive/20 bg-destructive/5"
+      }`}
+    >
+      <Clock className={`h-4 w-4 flex-none ${active ? "text-emerald" : "text-destructive/70"}`} />
+      <p className="font-mono text-[12px]">
+        {active ? (
+          <>
+            <span className="text-foreground/60">Inbound audit access expires in </span>
+            <span className={`font-semibold ${active ? "text-emerald" : "text-destructive"}`}>
+              {fmtCountdown(remaining)}
+            </span>
+          </>
+        ) : (
+          <span className="text-foreground/55">Your inbound audit access grant has expired.</span>
+        )}
+      </p>
+    </div>
   );
 }
 

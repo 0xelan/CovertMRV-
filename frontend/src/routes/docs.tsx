@@ -10,6 +10,9 @@ import {
   Lock,
   ServerCog,
   ShieldCheck,
+  Award,
+  Layers,
+  Zap,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -19,11 +22,13 @@ export const Route = createFileRoute("/docs")({
 
 const SECTIONS = [
   { id: "overview", label: "Protocol Overview" },
+  { id: "wave3", label: "Wave 3 Changelog" },
   { id: "architecture", label: "Architecture" },
   { id: "deployments", label: "Deployments" },
   { id: "fhe", label: "How FHE Works" },
   { id: "contracts", label: "Smart Contracts" },
   { id: "sdk", label: "SDK Integration" },
+  { id: "api", label: "Enterprise API" },
   { id: "disclosure", label: "Disclosure Model" },
   { id: "faq", label: "FAQ" },
 ];
@@ -39,7 +44,7 @@ function Docs() {
           <div className="flex items-center gap-4 font-mono text-[11px] uppercase tracking-[0.22em] text-foreground/45">
             <span className="text-emerald">DOCS</span>
             <span className="h-px w-12 bg-foreground/20" />
-            <span>v0.2.0 · Wave 2 · Arbitrum Sepolia</span>
+            <span>v0.3.0 · Wave 3 · Arbitrum Sepolia</span>
           </div>
           <h1 className="font-display mt-6 max-w-3xl text-4xl font-normal leading-[1.05] tracking-tight md:text-6xl">
             Protocol
@@ -51,8 +56,9 @@ function Docs() {
             protocol for climate compliance, built on Fhenix CoFHE. This
             document describes the contracts, the cryptographic primitives, and
             the disclosure model.
-          </p>
-        </div>
+          </p>            <p className="mt-2 font-mono text-[12px] text-emerald/70">
+              Wave 3 — SDK 0.5.2 · ComplianceCertificate NFT · Batch Submit · Reporting Year · Enterprise API
+            </p>        </div>
       </section>
 
       <div className="mx-auto grid max-w-[1480px] gap-12 px-6 py-16 md:px-10 lg:grid-cols-[240px_1fr]">
@@ -92,12 +98,61 @@ function Docs() {
               remain ciphertext for the lifetime of the contract.
             </p>
             <p>
-              Wave 2 (CapCheck) is live on Arbitrum Sepolia with two deployed
-              contracts, a production dApp, and 11 FHE operations executing
-              fully on-chain. Subsequent waves extend the protocol to supply
-              chain footprints, confidential carbon credits, and sealed-bid
-              green procurement.
+              Wave 3 adds <strong>batch submissions</strong>, per-year <strong>reporting period tracking</strong>, an ERC-721 <strong>ComplianceCertificate</strong> NFT minted on settlement, an <strong>AuditTimer</strong> countdown in the dashboard, an <strong>Enterprise REST API</strong> for CEMS/IoT integrations, and upgrades the SDK to <strong>@cofhe/sdk 0.5.2</strong> (tfhe 1.5.3 WASM).
             </p>
+          </Block>
+
+          <Block id="wave3" title="Wave 3 Changelog">
+            <p className="mb-4 text-foreground/60">All changes shipped in Wave 3 (May 2026).</p>
+            <div className="space-y-3">
+              {[
+                {
+                  icon: Zap,
+                  label: "SDK upgrade: @cofhe/sdk 0.4.x → 0.5.2",
+                  detail: "tfhe WASM 0.11.1 → 1.5.3. getOrCreateSelfPermit() now takes no args. set404RetryTimeout(15_000) added to all decryptForView chains. WagmiAdapter added in ./adapters export.",
+                },
+                {
+                  icon: Layers,
+                  label: "CapRegistry: batch submissions + reporting year",
+                  detail: "submitEmissions now takes (facilityId, encEmissions, reportingYear). batchSubmitEmissions(uint256[], InEuint64[], uint256) lets emitters submit up to 50 facilities in one tx. unchecked loops, cached msg.sender/block.timestamp for gas.",
+                },
+                {
+                  icon: Award,
+                  label: "ComplianceCertificate.sol — ERC-721 NFT",
+                  detail: "Minted by CapCheck on settleCompliance. Token ID = keccak256(company, reportingYear) — deterministic and idempotent. Self-contained, no external imports. Certificate struct: {company, reportingYear, compliant, issuedAt}.",
+                },
+                {
+                  icon: ShieldCheck,
+                  label: "CapCheck: certificate wiring + reportingYear",
+                  detail: "checkCompliance now accepts (company, reportingYear). settleCompliance calls certificate.mintCertificate if wired. ComplianceSettled event now emits tokenId.",
+                },
+                {
+                  icon: ServerCog,
+                  label: "31 Hardhat tests — all passing",
+                  detail: "CapRegistry suite (23), CapCheck suite (8). Covers batch submissions, length mismatch revert, certificate mint, double-settle revert, ComplianceSettled event log parsing.",
+                },
+                {
+                  icon: Cpu,
+                  label: "Dashboard UX upgrades",
+                  detail: "Reporting year picker in Submit + Compliance Check forms. AuditTimer live countdown banner. New Certificate tab with NFT status, FHE privacy proof list, and client-side certificate download.",
+                },
+                {
+                  icon: Lock,
+                  label: "Enterprise API — POST /api/submit",
+                  detail: "Vercel Edge Function. HMAC-SHA256 Bearer auth. Encrypts facility array server-side, calls batchSubmitEmissions. Max 50 facilities/batch. Full error-path handling.",
+                },
+              ].map(({ icon: Icon, label, detail }) => (
+                <div key={label} className="rounded-xl border border-foreground/10 bg-surface p-5">
+                  <div className="flex items-start gap-3">
+                    <Icon className="mt-0.5 h-4 w-4 flex-none text-emerald" strokeWidth={1.6} />
+                    <div>
+                      <p className="font-semibold text-[14px]">{label}</p>
+                      <p className="mt-1 text-[13px] text-foreground/60 leading-relaxed">{detail}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </Block>
 
           <Block id="deployments" title="Live Deployments">
@@ -109,13 +164,18 @@ function Docs() {
               {[
                 {
                   name: "CapRegistry.sol",
-                  address: "0x13739cCd234A901060453d7b86C1BCc245B40428",
-                  role: "Encrypted emissions storage + cap management",
+                  address: "0x495e718979D882024CAea4613D7b05F9865bC652",
+                  role: "Encrypted emissions storage + batch submit + cap management",
                 },
                 {
                   name: "CapCheck.sol",
-                  address: "0x2792563D003faBEecfbac8c32c9baA7705030C26",
-                  role: "Compliance verification + audit access control",
+                  address: "0xbeA50F98e24F03D6A901897C2B520636d19B9043",
+                  role: "Compliance verification + certificate wiring + audit access control",
+                },
+                {
+                  name: "ComplianceCertificate.sol",
+                  address: "0xC327A527B81402495f343277E37AE19b4112749d",
+                  role: "ERC-721 compliance certificate NFT — minted on settlement",
                 },
               ].map((c) => (
                 <div
@@ -147,36 +207,42 @@ function Docs() {
               Three contracts coordinate. Five roles consume their outputs.
             </p>
             <pre className="overflow-x-auto rounded-xl border border-foreground/10 bg-surface p-6 font-mono text-[12.5px] leading-relaxed text-foreground/80">
-{`┌─────────────────────────────────────────────────────────────┐
-│                       CovertMRV Protocol                    │
-└─────────────────────────────────────────────────────────────┘
+{`┌─────────────────────────────────────────────────────────────────┐
+│                     CovertMRV Protocol v0.3                     │
+└─────────────────────────────────────────────────────────────────┘
 
-   client (browser)
-   ────────────────
-   @cofhe/sdk   ──encrypt──▶  euint64 ciphertext
-                                    │
-                                    ▼
-   ┌────────────────────────────────────────────────┐
-   │   CapRegistry.sol     // emissions storage     │
-   │     • submit(facilityId, eEmissions)           │
-   │     • aggregate() → FHE.add() across handles   │
-   │     • setCap(eCap)   // encrypted threshold    │
-   └────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-   ┌────────────────────────────────────────────────┐
-   │   CapCheck.sol        // verification engine   │
-   │     • compute() → ebool = FHE.lte(total, cap)  │
-   │     • result()  → ebool handle                 │
-   └────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-   ┌────────────────────────────────────────────────┐
-   │   DisclosureACL.sol   // role-scoped access    │
-   │     • grantAuditor(addr, ttl)                  │
-   │     • grantRegulator(addr)  // ebool only      │
-   │     • grantBuyerBand(addr, level)              │
-   └────────────────────────────────────────────────┘`}
+   client (browser / enterprise API)
+   ──────────────────────────────────
+   @cofhe/sdk 0.5.2  ──encrypt──▶  euint64 ciphertext
+                                         │
+                                         ▼
+   ┌─────────────────────────────────────────────────────────┐
+   │   CapRegistry.sol        // emissions storage           │
+   │     • submitEmissions(facilityId, eEmit, year)          │
+   │     • batchSubmitEmissions(ids[], eEmits[], year)        │
+   │     • aggregateTotal()  →  FHE.add() across handles     │
+   │     • setCap(eCap)       // encrypted regulatory cap    │
+   └─────────────────────────────────────────────────────────┘
+                                         │
+                                         ▼
+   ┌─────────────────────────────────────────────────────────┐
+   │   CapCheck.sol           // verification engine         │
+   │     • checkCompliance(company, year) → ebool            │
+   │     • settleCompliance(company, bool, sig)              │
+   │       └─▶ ComplianceCertificate.mintCertificate()       │
+   └─────────────────────────────────────────────────────────┘
+                                         │
+                                         ▼
+   ┌─────────────────────────────────────────────────────────┐
+   │   ComplianceCertificate.sol  // ERC-721 NFT             │
+   │     • tokenId = keccak256(company, year)                │
+   │     • certificates[id] = {company,year,compliant,ts}    │
+   └─────────────────────────────────────────────────────────┘
+                                         │
+   DisclosureACL (base)                  │
+     • grantAuditAccessToTotal(auditor, ttl)  FHE.allow()
+     • revokeAuditAccess(auditor)
+     • auditGrants[company][auditor] → (expiry, active)`}
             </pre>
           </Block>
 
@@ -218,28 +284,41 @@ function Docs() {
               <ContractCard
                 icon={ServerCog}
                 name="CapRegistry.sol"
-                address="0x13739cCd234A901060453d7b86C1BCc245B40428"
+                address="0x495e718979D882024CAea4613D7b05F9865bC652"
                 fns={[
                   ["registerAsEmitter", "() → role granted"],
-                  ["submitEmissions", "(facilityId: uint256, e: InEuint64) → void"],
-                  ["aggregateBase", "(company: address) → void  // FHE.add()"],
+                  ["submitEmissions", "(facilityId: uint256, e: InEuint64, year: uint256) → void"],
+                  ["batchSubmitEmissions", "(ids: uint256[], es: InEuint64[], year: uint256) → void"],
+                  ["aggregateTotal", "(company: address) → void  // FHE.add()"],
                   ["setCap", "(company: address, e: InEuint64) → void  // admin"],
-                  ["grantCheckAccess", "(company: address) → void  // admin"],
+                  ["grantCheckAccess", "(company: address, checker: address) → void  // admin"],
                   ["getMyEmissions", "(facilityId: uint256) → euint64  // msg.sender"],
-                  ["getMyFacilities", "() → uint256[]  // registered facility IDs"],
+                  ["getFacilityIds", "(company: address) → uint256[]"],
                 ]}
               />
               <ContractCard
                 icon={ShieldCheck}
                 name="CapCheck.sol"
-                address="0x2792563D003faBEecfbac8c32c9baA7705030C26"
+                address="0xbeA50F98e24F03D6A901897C2B520636d19B9043"
                 fns={[
-                  ["checkCompliance", "(company: address) → void  // FHE.lte(total, cap)"],
-                  ["settleCompliance", "(company: address, val: bool, sig: bytes) → void"],
-                  ["grantAuditAccess", "(company: address, auditor: address, expiry: uint256) → void"],
-                  ["grantAuditAccessSelf", "(auditor: address, expiry: uint256) → void"],
-                  ["revokeAuditAccess", "(company: address, auditor: address) → void"],
-                  ["isCompliant", "(company: address) → bool  // settled result"],
+                  ["checkCompliance", "(company: address, year: uint256) → void  // FHE.lte(total, cap)"],
+                  ["settleCompliance", "(company: address, val: bool, sig: bytes) → void  // mints NFT"],
+                  ["setCertificate", "(cert: address) → void  // owner only, one-time"],
+                  ["isSettled", "(company: address) → (bool settled, bool result)"],
+                  ["lastCheckedAt", "(company: address) → uint256"],
+                ]}
+              />
+              <ContractCard
+                icon={Award}
+                name="ComplianceCertificate.sol"
+                address="0xC327A527B81402495f343277E37AE19b4112749d"
+                fns={[
+                  ["mintCertificate", "(company, year, compliant) → tokenId  // called by CapCheck"],
+                  ["getCertificate", "(company, year) → Certificate"],
+                  ["tokenIdFor", "(company, year) → uint256  // keccak256 deterministic ID"],
+                  ["balanceOf", "(owner: address) → uint256"],
+                  ["ownerOf", "(tokenId: uint256) → address"],
+                  ["setCapCheck", "(capCheck: address) → void  // owner only"],
                 ]}
               />
               <ContractCard
@@ -247,51 +326,98 @@ function Docs() {
                 name="DisclosureACL (base)"
                 address=""
                 fns={[
-                  ["_retainAccess", "(handle: euint64) → FHE.allowThis()"],
-                  ["_grantDecrypt", "(handle: euint64, to: address) → FHE.allow()"],
-                  ["_grantBoolOnly", "(ebool: ebool, to: address) → selective bool"],
-                  ["_grantTimedAudit", "(handle, auditor, expiry) → time-bounded"],
+                  ["grantAuditAccessToTotal", "(auditor, durationSec) → FHE.allow(total, auditor)"],
+                  ["revokeAuditAccess", "(auditor) → deactivate grant"],
+                  ["auditGrants", "[company][auditor] → (expiry: uint256, active: bool)"],
+                  ["roleOf", "(addr) → Role enum"],
                 ]}
               />
             </div>
           </Block>
 
           <Block id="sdk" title="SDK Integration">
-            <p>Wave 2 uses <code className="rounded border border-foreground/10 bg-surface px-1.5 py-0.5 font-mono text-[12px] text-emerald">@cofhe/sdk@0.4.0</code> exclusively. The legacy <code className="rounded border border-foreground/10 bg-surface px-1.5 py-0.5 font-mono text-[12px] text-emerald">cofhejs</code> FHE.decrypt() API is deprecated and not used.</p>
+            <p>Wave 3 uses <code className="rounded border border-foreground/10 bg-surface px-1.5 py-0.5 font-mono text-[12px] text-emerald">@cofhe/sdk@0.5.2</code>. Breaking changes from 0.4.x: <code className="rounded border border-foreground/10 bg-surface px-1.5 py-0.5 font-mono text-[12px] text-emerald">getOrCreateSelfPermit()</code> now takes no arguments (uses connected state), and tfhe WASM upgraded to 1.5.3.</p>
             <pre className="overflow-x-auto rounded-xl border border-foreground/10 bg-surface p-6 font-mono text-[12.5px] leading-relaxed text-foreground/80">
 {`// 1. Initialise the FHE client (singleton per session)
 const client = await getFheClient(publicClient, walletClient);
 
 // 2. Encrypt before sending to contract
 const eInput = await client.encrypt_uint64(BigInt(emissionsTonnes));
-const { handles, inputProof } = eInput;
 
-// 3. Read your own encrypted value (off-chain, permit-based)
+// 3. Submit single facility (with reporting year)
+await submitEmissions(facilityId, eInput, reportingYear);
+
+// 4. OR — batch submit up to 50 facilities in one tx
+await batchSubmitEmissions([1n, 2n, 3n], [eA, eB, eC], 2025n);
+
+// 5. Read your own encrypted value (off-chain, permit-based)
+const permit = await client.getOrCreateSelfPermit(); // 0.5.x: no args
 const sealed = await client
-  .decrypt(handle)
-  .withPermit()    // signed permit scoped to your account
+  .decryptForView(handle, permit)
+  .set404RetryTimeout(15_000)   // new in 0.5.x
   .execute();
 
-// 4. Publish decryption result on-chain (compliance settlement)
-// → CapCheck calls FHE.allow(result, owner) not allowPublic
+// 6. Settle compliance on-chain (regulator only)
 const { value, signature } = await client
   .decryptForTx(complianceHandle)
-  .withPermit()
   .execute();
-await settleCompliance(company, value, signature);`}
+await settleCompliance(company, value, signature);
+// → CapCheck automatically calls
+//   ComplianceCertificate.mintCertificate(company, year, value)`}
             </pre>
             <div className="grid gap-4 sm:grid-cols-2">
               <Mini
                 icon={Cpu}
-                title="11 FHE operations"
-                body="encrypt, add, sub, lte, gte, select, allow, allowThis, allowSender, sealoutput, isInitialized."
+                title="SDK 0.5.2 · tfhe 1.5.3"
+                body="getOrCreateSelfPermit() takes no args. set404RetryTimeout(15_000) on all decryptForView chains. WagmiAdapter in ./adapters."
               />
               <Mini
                 icon={Lock}
                 title="Zero hardware trust"
-                body="No enclaves, no side channels, no attestation chains. Pure lattice-based cryptography on the threshold network."
+                body="No enclaves. No side channels. No attestation chains. Pure lattice-based cryptography on the Fhenix threshold network."
               />
             </div>
+          </Block>
+
+          <Block id="api" title="Enterprise API">
+            <p>
+              The <code className="rounded border border-foreground/10 bg-surface px-1.5 py-0.5 font-mono text-[12px] text-emerald">POST /api/submit</code> Vercel Edge Function allows CEMS, IoT sensors, and enterprise ERP systems to submit batch encrypted emissions without a browser wallet. Authentication is HMAC-SHA256 — the request body is signed with a shared secret, verified server-side via the Web Crypto API.
+            </p>
+            <pre className="overflow-x-auto rounded-xl border border-foreground/10 bg-surface p-6 font-mono text-[12.5px] leading-relaxed text-foreground/80">
+{`# Compute HMAC-SHA256 of the JSON body with your API_SECRET
+# and pass it as a Bearer token.
+
+curl https://covert-mrv.vercel.app/api/submit \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer <HMAC-SHA256>" \\
+  -d '{
+    "facilityIds":      [1, 2, 3],
+    "emissionsTonnes":  [12500, 8300, 19100],
+    "reportingYear":    2025,
+    "company":          "0x..."
+  }'
+
+# Response
+{
+  "txHash":        "0x...",
+  "facilityIds":   [1, 2, 3],
+  "reportingYear": 2025,
+  "company":       "0x..."
+}`}
+            </pre>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Mini
+                icon={Lock}
+                title="HMAC-SHA256 auth"
+                body="Bearer token = HMAC of the JSON body. Constant-time comparison on server. No API keys in URLs."
+              />
+              <Mini
+                icon={Zap}
+                title="Server-side FHE encrypt"
+                body="The edge function encrypts all facility values with @cofhe/sdk before calling batchSubmitEmissions. Max 50 facilities per batch."
+              />
+            </div>
+            <p className="text-sm text-foreground/55">Required Vercel env vars: <code className="font-mono text-[11px]">API_SECRET</code>, <code className="font-mono text-[11px]">SUBMIT_PRIVATE_KEY</code>, <code className="font-mono text-[11px]">CAP_REGISTRY_ADDRESS</code>.</p>
           </Block>
 
           <Block id="disclosure" title="Selective Disclosure Model">
@@ -331,7 +457,15 @@ L4  Proof              →  Anyone            on-chain TX hash`}
                 },
                 {
                   q: "Is this production-ready?",
-                  a: "Wave 2 (CapCheck) is live on Arbitrum Sepolia. Mainnet rollout follows post-audit. ScopeX (supply chain), Credits (cCO2 token), and Tender are scheduled per the roadmap.",
+                  a: "Wave 3 is live on Arbitrum Sepolia with all three contracts deployed and wired. 31 Hardhat tests pass on every commit. Mainnet rollout follows post-audit. ScopeX (supply chain), Credits (cCO2 token), and Tender are on the roadmap.",
+                },
+                {
+                  q: "What does the ComplianceCertificate NFT prove?",
+                  a: "It proves that at the time of settlement, the FHE coprocessor evaluated FHE.lte(encryptedTotal, encryptedCap) = true (or false). The token ID is deterministic: keccak256(company, reportingYear). Metadata is on-chain. No IPFS dependency.",
+                },
+                {
+                  q: "Can I submit via the API instead of the browser?",
+                  a: "Yes. POST /api/submit accepts a JSON batch of up to 50 facilities. It encrypts server-side and calls batchSubmitEmissions. Auth is HMAC-SHA256 of the request body. Required env: API_SECRET, SUBMIT_PRIVATE_KEY, CAP_REGISTRY_ADDRESS.",
                 },
               ].map((it) => (
                 <FAQItem key={it.q} q={it.q} a={it.a} />
