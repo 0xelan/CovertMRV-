@@ -333,10 +333,10 @@ export function ContractsSection() {
       body: "Computes FHE.lte(total, cap) and returns only an encrypted boolean to the regulator. Pass or fail. Never the number.",
     },
     {
-      icon: KeySquare,
-      name: "DisclosureACL.sol",
-      sub: "Graduated Access Control",
-      body: "Five roles (Emitter, Auditor, Regulator, Buyer, Admin) with scoped FHE.allow() grants and time-bounded audit permits.",
+      icon: ShieldCheck,
+      name: "ComplianceCertificate.sol",
+      sub: "On-Chain Compliance NFT",
+      body: "ERC-721 certificate minted on settlement. Token ID is keccak256(company, year) — deterministic and idempotent. Proves compliance for a specific reporting year without revealing emissions.",
     },
   ];
   return (
@@ -450,9 +450,9 @@ export function WhyFHE() {
 export function Roadmap() {
   const waves = [
     { w: "Wave 2", tag: "CapCheck", status: "Live", body: "Encrypted emissions storage, compliance verification engine, deployed contracts, live dApp." },
-    { w: "Wave 3", tag: "ScopeX", status: "In Build", body: "Encrypted supply chain footprint rollups with allowTransient cross-contract FHE composition." },
-    { w: "Wave 4", tag: "Credits", status: "Q3 2026", body: "FHERC20 carbon credit token (cCO2) with conditional minting on verified compliance." },
-    { w: "Wave 5", tag: "Tender + Sentinel", status: "Q1 2027", body: "Sealed-bid green procurement and encrypted risk scoring engine." },
+    { w: "Wave 3", tag: "ISO 14064", status: "Live", body: "ISO 14064 scope classification, batch submit UI, ERC-721 ComplianceCertificate NFT, Enterprise API, 31 tests — live on Arbitrum Sepolia." },
+    { w: "Wave 4", tag: "ScopeX", status: "Q4 2026", body: "Encrypted Scope 3 supply chain footprint rollups with allowTransient cross-contract FHE composition." },
+    { w: "Wave 5", tag: "Credits", status: "Q2 2027", body: "FHERC20 carbon credit token (cCO2) with conditional minting on verified compliance." },
   ];
   return (
     <section className="relative border-t border-foreground/10 bg-background py-32">
@@ -494,7 +494,7 @@ export function Roadmap() {
                 >
                   <span
                     className={`absolute left-0 top-2 h-3.5 w-3.5 rounded-full border-2 ${
-                      i === 0 ? "border-emerald bg-emerald shadow-[0_0_12px_var(--color-emerald)]" : "border-foreground/30 bg-background"
+                      i === 1 ? "border-emerald bg-emerald shadow-[0_0_12px_var(--color-emerald)]" : i === 0 ? "border-emerald/50 bg-emerald/30" : "border-foreground/30 bg-background"
                     }`}
                   />
                   <div className="flex flex-wrap items-baseline gap-3">
@@ -502,7 +502,7 @@ export function Roadmap() {
                     <h3 className="font-display text-2xl font-normal tracking-tight md:text-3xl">{w.tag}</h3>
                     <span
                       className={`rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
-                        i === 0 ? "border-emerald/50 bg-emerald/10 text-emerald" : "border-foreground/15 bg-foreground/[0.04] text-foreground/55"
+                        i === 1 ? "border-emerald/50 bg-emerald/10 text-emerald" : i === 0 ? "border-emerald/30 bg-emerald/5 text-emerald/60" : "border-foreground/15 bg-foreground/[0.04] text-foreground/55"
                       }`}
                     >
                       {w.status}

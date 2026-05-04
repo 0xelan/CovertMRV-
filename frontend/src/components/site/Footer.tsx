@@ -73,7 +73,7 @@ export function Footer() {
             © {new Date().getFullYear()} CovertMRV Protocol · Built on Fhenix CoFHE
           </p>
           <p className="font-mono text-xs text-foreground/40">
-            Arbitrum Sepolia · v0.2.0 · status: operational
+            Arbitrum Sepolia · v0.3.0 · Wave 3 · ISO 14064 · operational
           </p>
         </div>
       </div>
