@@ -324,19 +324,57 @@ export function ContractsSection() {
       icon: ServerCog,
       name: "CapRegistry.sol",
       sub: "Encrypted Emissions Storage",
-      body: "Companies submit encrypted facility emissions. The contract stores euint64 handles, aggregates totals via FHE.add(), and stores encrypted regulatory caps.",
+      body: "Companies submit encrypted facility emissions. Stores euint64 handles, aggregates totals via FHE.add(), and stores encrypted regulatory caps. Scope encrypted as euint8 in Wave 4.",
+      wave: "W3",
     },
     {
       icon: ShieldCheck,
       name: "CapCheck.sol",
       sub: "Compliance Verification Engine",
-      body: "Computes FHE.lte(total, cap) and returns only an encrypted boolean to the regulator. Pass or fail. Never the number.",
+      body: "Computes FHE.lte(total, cap) and returns only an encrypted boolean. Pass or fail. Never the number. Routes compliance ebool to CreditIssuer via FHE.allow.",
+      wave: "W3",
     },
     {
       icon: ShieldCheck,
       name: "ComplianceCertificate.sol",
       sub: "On-Chain Compliance NFT",
-      body: "ERC-721 certificate minted on settlement. Token ID is keccak256(company, year) — deterministic and idempotent. Proves compliance for a specific reporting year without revealing emissions.",
+      body: "ERC-721 certificate minted on settlement. Token ID is keccak256(company, year) — deterministic and idempotent. Proves compliance without revealing emissions.",
+      wave: "W3",
+    },
+    {
+      icon: Link2,
+      name: "SupplierAttest.sol",
+      sub: "Encrypted Scope 3 Factors",
+      body: "Suppliers register encrypted emissions intensity factors per product SKU. Cross-contract reads via FHE.allowTransient — access expires after the transaction, preventing supplier data leakage.",
+      wave: "W4",
+    },
+    {
+      icon: Layers,
+      name: "ProductFootprint.sol",
+      sub: "Multi-Supplier Footprint Rollup",
+      body: "Aggregates Scope 3 factors from multiple suppliers via FHE.add. Classifies footprint into encrypted bands A/B/C via FHE.select. Double-blind threshold checks with FHE.lte.",
+      wave: "W4",
+    },
+    {
+      icon: KeySquare,
+      name: "cCO2.sol",
+      sub: "Encrypted Carbon Credit Token",
+      body: "FHERC20 carbon credit token. All balances encrypted end-to-end. Minted by CreditIssuer via FHE.select conditional on compliance ebool. Burns via CreditRetire.",
+      wave: "W4",
+    },
+    {
+      icon: Cpu,
+      name: "CreditIssuer.sol",
+      sub: "Conditional FHE.select Minting",
+      body: "Bridges CapCheck compliance results and cCO2 minting. Uses FHE.select(compliant, issuanceRate, 0) — both compliant and non-compliant paths execute identically. Privacy by construction.",
+      wave: "W4",
+    },
+    {
+      icon: Lock,
+      name: "CreditRetire.sol",
+      sub: "Encrypted Retirement Receipts",
+      body: "Burns cCO2 credits and stores encrypted retirement receipts. Selective audit disclosure via FHE.allow — only the retiring company and explicitly granted auditors can decrypt amounts.",
+      wave: "W4",
     },
   ];
   return (
@@ -347,26 +385,33 @@ export function ContractsSection() {
         </Reveal>
         <Reveal delay={0.05}>
           <h2 className="font-display mt-6 max-w-3xl text-4xl font-normal leading-[1.05] tracking-tight md:text-5xl">
-            Three Contracts.
+            Eight Contracts.
             <br />
-            <span className="text-foreground/45">Complete Compliance.</span>
+            <span className="text-foreground/45">Complete Privacy Stack.</span>
           </h2>
         </Reveal>
 
-        <StaggerGroup className="mt-16 grid gap-6 lg:grid-cols-3">
+        <StaggerGroup className="mt-16 grid gap-6 lg:grid-cols-4">
           {items.map((it) => (
             <StaggerItem key={it.name}>
               <Tilt max={5}>
                 <SpotlightCard className="group relative h-full overflow-hidden rounded-2xl border border-foreground/10 bg-surface p-8 transition hover:border-emerald/40">
                   <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-emerald/[0.07] blur-3xl transition group-hover:bg-emerald/15" />
-                  <it.icon className="relative h-7 w-7 text-emerald" strokeWidth={1.6} />
+                  <div className="relative flex items-start justify-between">
+                    <it.icon className="h-7 w-7 text-emerald" strokeWidth={1.6} />
+                    <span className={`rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
+                      it.wave === "W4"
+                        ? "border-emerald/40 bg-emerald/10 text-emerald"
+                        : "border-foreground/15 bg-foreground/[0.04] text-foreground/40"
+                    }`}>{it.wave}</span>
+                  </div>
                   <p className="relative mt-6 font-mono text-sm text-foreground/55">
                     {it.sub}
                   </p>
-                  <h3 className="font-display relative mt-2 text-3xl font-normal tracking-tight">
+                  <h3 className="font-display relative mt-2 text-2xl font-normal tracking-tight">
                     {it.name}
                   </h3>
-                  <p className="relative mt-5 text-[14px] leading-relaxed text-foreground/65">
+                  <p className="relative mt-5 text-[13px] leading-relaxed text-foreground/65">
                     {it.body}
                   </p>
                   <div className="relative mt-8 flex items-center gap-2 font-mono text-[11px] text-foreground/40">
@@ -451,8 +496,8 @@ export function Roadmap() {
   const waves = [
     { w: "Wave 2", tag: "CapCheck", status: "Live", body: "Encrypted emissions storage, compliance verification engine, deployed contracts, live dApp." },
     { w: "Wave 3", tag: "ISO 14064", status: "Live", body: "ISO 14064 scope classification, batch submit UI, ERC-721 ComplianceCertificate NFT, Enterprise API, 31 tests — live on Arbitrum Sepolia." },
-    { w: "Wave 4", tag: "ScopeX", status: "Q4 2026", body: "Encrypted Scope 3 supply chain footprint rollups with allowTransient cross-contract FHE composition." },
-    { w: "Wave 5", tag: "Credits", status: "Q2 2027", body: "FHERC20 carbon credit token (cCO2) with conditional minting on verified compliance." },
+    { w: "Wave 4", tag: "ScopeX", status: "Live", body: "Encrypted Scope 3 supply chain footprint rollups with FHE.allowTransient cross-contract composition. SupplierAttest, ProductFootprint, cCO2 FHERC20, CreditIssuer, CreditRetire — 8 contracts, 56 tests live." },
+    { w: "Wave 5", tag: "Tender", status: "Q1 2027", body: "Encrypted procurement — buyer submits sealed bid, protocol verifies credit budget without leaking strategy. Double-blind offset market." },
   ];
   return (
     <section className="relative border-t border-foreground/10 bg-background py-32">
@@ -494,7 +539,7 @@ export function Roadmap() {
                 >
                   <span
                     className={`absolute left-0 top-2 h-3.5 w-3.5 rounded-full border-2 ${
-                      i === 1 ? "border-emerald bg-emerald shadow-[0_0_12px_var(--color-emerald)]" : i === 0 ? "border-emerald/50 bg-emerald/30" : "border-foreground/30 bg-background"
+                      i === 2 ? "border-emerald bg-emerald shadow-[0_0_12px_var(--color-emerald)] animate-pulse" : i <= 1 ? "border-emerald/50 bg-emerald/30" : "border-foreground/30 bg-background"
                     }`}
                   />
                   <div className="flex flex-wrap items-baseline gap-3">
@@ -502,7 +547,7 @@ export function Roadmap() {
                     <h3 className="font-display text-2xl font-normal tracking-tight md:text-3xl">{w.tag}</h3>
                     <span
                       className={`rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
-                        i === 1 ? "border-emerald/50 bg-emerald/10 text-emerald" : i === 0 ? "border-emerald/30 bg-emerald/5 text-emerald/60" : "border-foreground/15 bg-foreground/[0.04] text-foreground/55"
+                        i <= 2 ? "border-emerald/50 bg-emerald/10 text-emerald" : "border-foreground/15 bg-foreground/[0.04] text-foreground/55"
                       }`}
                     >
                       {w.status}

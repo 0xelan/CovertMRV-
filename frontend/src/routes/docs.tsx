@@ -22,6 +22,7 @@ export const Route = createFileRoute("/docs")({
 
 const SECTIONS = [
   { id: "overview", label: "Protocol Overview" },
+  { id: "wave4", label: "Wave 4 Changelog" },
   { id: "wave3", label: "Wave 3 Changelog" },
   { id: "architecture", label: "Architecture" },
   { id: "deployments", label: "Deployments" },
@@ -44,7 +45,7 @@ function Docs() {
           <div className="flex items-center gap-4 font-mono text-[11px] uppercase tracking-[0.22em] text-foreground/45">
             <span className="text-emerald">DOCS</span>
             <span className="h-px w-12 bg-foreground/20" />
-            <span>v0.3.0 · Wave 3 · Arbitrum Sepolia</span>
+          <span>v0.4.0 · Wave 4 · Arbitrum Sepolia</span>
           </div>
           <h1 className="font-display mt-6 max-w-3xl text-4xl font-normal leading-[1.05] tracking-tight md:text-6xl">
             Protocol
@@ -98,8 +99,61 @@ function Docs() {
               remain ciphertext for the lifetime of the contract.
             </p>
             <p>
-              Wave 3 adds <strong>batch submissions</strong>, per-year <strong>reporting period tracking</strong>, an ERC-721 <strong>ComplianceCertificate</strong> NFT minted on settlement, an <strong>AuditTimer</strong> countdown in the dashboard, an <strong>Enterprise REST API</strong> for CEMS/IoT integrations, and upgrades the SDK to <strong>@cofhe/sdk 0.5.2</strong> (tfhe 1.5.3 WASM).
+              Wave 4 adds <strong>5 new contracts</strong>: SupplierAttest (encrypted Scope 3 supplier factors), ProductFootprint (multi-supplier FHE rollup + band classification), cCO2 (FHERC20 carbon credit token), CreditIssuer (FHE.select conditional minting), and CreditRetire (encrypted retirement receipts with selective audit disclosure). Total: <strong>8 contracts, 56 tests</strong>.
             </p>
+          </Block>
+
+          <Block id="wave4" title="Wave 4 Changelog">
+            <p className="mb-4 text-foreground/60">All changes shipped in Wave 4 (Q4 2026). 5 new contracts, 25 new tests, full supply chain + carbon credit pipeline.</p>
+            <div className="space-y-3">
+              {[
+                {
+                  icon: Layers,
+                  label: "SupplierAttest.sol — Encrypted Scope 3 Intensity Factors",
+                  detail: "Suppliers register euint64 emission intensity factors per product SKU. submitFactor(sku, InEuint64, year). getFactor() uses FHE.allowTransient for same-TX cross-contract reads. grantFactorDecrypt for persistent auditor access.",
+                },
+                {
+                  icon: Cpu,
+                  label: "ProductFootprint.sol — Multi-Supplier FHE Rollup",
+                  detail: "Aggregates supplier factors via FHE.add across up to N suppliers. Classifies footprint into encrypted bands A (≤100), B (101-500), C (>500) using FHE.select. Double-blind threshold check via FHE.lte.",
+                },
+                {
+                  icon: KeySquare,
+                  label: "cCO2.sol — FHERC20 Encrypted Carbon Credit Token",
+                  detail: "FHERC20 token with encrypted balances. Minted by CreditIssuer, burned by CreditRetire. Inherits full FHERC20 encrypted transfer mechanics. All on-chain balances remain ciphertext.",
+                },
+                {
+                  icon: ShieldCheck,
+                  label: "CreditIssuer.sol — FHE.select Conditional Minting",
+                  detail: "Reads compliance ebool from CapCheck and mints cCO2 via FHE.select(compliant, issuanceRate, 0). Both compliant and non-compliant paths execute identically — observers cannot distinguish outcomes from gas or calldata.",
+                },
+                {
+                  icon: Lock,
+                  label: "CreditRetire.sol — Encrypted Retirement Receipts",
+                  detail: "Burns cCO2 via burnFrom and stores encrypted receipts keyed by retirement ID. Selective audit disclosure: grantRetirementAudit grants time-bounded FHE.allow to specific auditors per retirement ID.",
+                },
+                {
+                  icon: ServerCog,
+                  label: "CapRegistry + DisclosureACL — Wave 4 Privacy Fixes",
+                  detail: "Scope now encrypted as InEuint8 in submitEmissions. companyFacilities and hasSubmitted mappings made private. getFacilityCount restricted to owner or company only. _rotateHandle added to DisclosureACL for handle hygiene.",
+                },
+                {
+                  icon: Zap,
+                  label: "25 New Tests — 56 Total",
+                  detail: "CapRegistryPrivacy (6), SupplierAttest (6), ProductFootprint (8), cCO2 (5), CreditIssuer (4), CreditRetire (5). All prior 31 tests updated for new submitEmissions encrypted-scope signature.",
+                },
+              ].map(({ icon: Icon, label, detail }) => (
+                <div key={label} className="rounded-xl border border-foreground/10 bg-surface p-5">
+                  <div className="flex items-start gap-3">
+                    <Icon className="mt-0.5 h-4 w-4 flex-none text-emerald" strokeWidth={1.6} />
+                    <div>
+                      <p className="font-semibold text-[14px]">{label}</p>
+                      <p className="mt-1 text-[13px] text-foreground/60 leading-relaxed">{detail}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </Block>
 
           <Block id="wave3" title="Wave 3 Changelog">
@@ -332,6 +386,64 @@ function Docs() {
                   ["revokeAuditAccess", "(auditor) → deactivate grant"],
                   ["auditGrants", "[company][auditor] → (expiry: uint256, active: bool)"],
                   ["roleOf", "(addr) → Role enum"],
+                ]}
+              />
+              <p className="pt-4 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald/60">Wave 4 Contracts</p>
+              <ContractCard
+                icon={Layers}
+                name="SupplierAttest.sol"
+                address="pending deploy:wave4"
+                fns={[
+                  ["submitFactor", "(sku: bytes32, e: InEuint64, year: uint256) → void  // EMITTER role"],
+                  ["getFactor", "(supplier: address, sku: bytes32) → euint64  // FHE.allowTransient"],
+                  ["grantFactorDecrypt", "(sku: bytes32, to: address) → FHE.allow()"],
+                  ["getFactorHandle", "(supplier: address, sku: bytes32) → euint64  // view, no allowTransient"],
+                  ["hasFactorForSku", "(supplier: address, sku: bytes32) → bool"],
+                ]}
+              />
+              <ContractCard
+                icon={Zap}
+                name="ProductFootprint.sol"
+                address="pending deploy:wave4"
+                fns={[
+                  ["computeFootprint", "(sku: bytes32, suppliers: address[]) → euint64"],
+                  ["classifyBand", "(sku: bytes32, suppliers: address[]) → euint8  // 0=A 1=B 2=C"],
+                  ["checkThreshold", "(sku: bytes32, suppliers: address[], limit: InEuint64) → ebool"],
+                  ["setBandThresholds", "(bandA: uint64, bandB: uint64) → void  // owner only"],
+                ]}
+              />
+              <ContractCard
+                icon={KeySquare}
+                name="cCO2.sol (FHERC20)"
+                address="pending deploy:wave4"
+                fns={[
+                  ["mint", "(to: address, amount: uint256) → void  // issuer only, plaintext→encrypted"],
+                  ["mintEncrypted", "(to: address, encAmount: euint64) → void  // issuer only"],
+                  ["burnFrom", "(from: address, encAmount: InEuint64) → void  // retirer only"],
+                  ["setIssuer", "(issuer: address) → void  // owner only"],
+                  ["setRetirer", "(retirer: address) → void  // owner only"],
+                  ["balanceOf", "(owner: address) → uint256  // FHERC20 indicator"],
+                ]}
+              />
+              <ContractCard
+                icon={ShieldCheck}
+                name="CreditIssuer.sol"
+                address="pending deploy:wave4"
+                fns={[
+                  ["issueCredits", "(company: address, reportingYear: uint256) → void"],
+                  ["setIssuanceRate", "(rate: uint64) → void  // owner only"],
+                  ["issuanceRate", "() → uint64  // default: 1e18 (1 cCO2)"],
+                ]}
+              />
+              <ContractCard
+                icon={Lock}
+                name="CreditRetire.sol"
+                address="pending deploy:wave4"
+                fns={[
+                  ["retireCredits", "(encAmount: InEuint64, retirementId: bytes32) → void"],
+                  ["grantRetirementAudit", "(retirementId: bytes32, auditor: address, durationSecs: uint256) → void"],
+                  ["getRetirementReceipt", "(retirementId: bytes32) → euint64  // handle"],
+                  ["retirementOwner", "(retirementId: bytes32) → address"],
                 ]}
               />
             </div>

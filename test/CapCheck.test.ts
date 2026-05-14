@@ -53,10 +53,10 @@ describe("CapCheck", function () {
 
     await registry.connect(company).registerAsEmitter();
 
-    const [encEmissions] = await companyClient
-      .encryptInputs([Encryptable.uint64(emissions)])
+    const [encEmissions, encScope] = await companyClient
+      .encryptInputs([Encryptable.uint64(emissions), Encryptable.uint8(1n)])
       .execute();
-    await registry.connect(company).submitEmissions(1, encEmissions, YEAR, 0);
+    await registry.connect(company).submitEmissions(1, encEmissions, encScope, YEAR);
     await registry.aggregateTotal(company.address);
 
     const [encCap] = await ownerClient
@@ -126,10 +126,10 @@ describe("CapCheck", function () {
   it("checkCompliance reverts when no cap exists", async function () {
     const fx = await loadFixture(deployFixture);
     await fx.registry.connect(fx.company).registerAsEmitter();
-    const [encE] = await fx.companyClient
-      .encryptInputs([Encryptable.uint64(1n)])
+    const [encE, encScope] = await fx.companyClient
+      .encryptInputs([Encryptable.uint64(1n), Encryptable.uint8(1n)])
       .execute();
-    await fx.registry.connect(fx.company).submitEmissions(1, encE, YEAR, 0);
+    await fx.registry.connect(fx.company).submitEmissions(1, encE, encScope, YEAR);
     await fx.registry.aggregateTotal(fx.company.address);
     await expect(
       fx.check.checkCompliance(fx.company.address, YEAR)

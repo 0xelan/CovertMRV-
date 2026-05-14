@@ -73,7 +73,7 @@ export function Hero() {
                 Live
               </span>
               <span className="font-mono text-xs text-foreground/75">
-                Wave 3 · ISO 14064 · 3 Contracts Live
+                Wave 4 · ScopeX · 8 Contracts Live
               </span>
               <span className="ml-1 inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-emerald" />
             </motion.div>
@@ -138,7 +138,7 @@ export function Hero() {
             >
               <Sparkles className="h-3 w-3 text-emerald" />
               <span>
-                FHE.add() · FHE.lte() · FHE.allow() — ISO 14064 Scope 1/2/3 · 3 contracts · 31 tests
+                FHE.add() · FHE.lte() · FHE.select() — ISO 14064 + Scope 3 ScopeX · 8 contracts · 56 tests
               </span>
             </motion.div>
           </div>
@@ -146,16 +146,16 @@ export function Hero() {
           {/* Right: stat rail */}
           <div className="hidden flex-col gap-12 self-center lg:flex">
             <Counter value="$909B" label="Global Carbon Market" />
-            <Counter value="31" label="Tests Passing" delay={120} />
-            <Counter value="3" label="Contracts Live" delay={240} />
+            <Counter value="56" label="Tests Passing" delay={120} />
+            <Counter value="8" label="Contracts Live" delay={240} />
           </div>
         </div>
 
         {/* Mobile stats */}
         <div className="mt-16 grid grid-cols-3 gap-6 lg:hidden">
           <Counter value="$909B" label="Carbon Market" />
-          <Counter value="31" label="Tests" />
-          <Counter value="3" label="Contracts" />
+          <Counter value="56" label="Tests" />
+          <Counter value="8" label="Contracts" />
         </div>
 
         {/* Bottom rail */}

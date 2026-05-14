@@ -1,45 +1,41 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-import {FHE, euint64, InEuint64} from "@fhenixprotocol/cofhe-contracts/FHE.sol";
+import {FHE, euint64, euint8, InEuint64, InEuint8} from "@fhenixprotocol/cofhe-contracts/FHE.sol";
 import {DisclosureACL} from "./DisclosureACL.sol";
 
 /// @title CapRegistry
 /// @notice Encrypted facility-level emissions storage, aggregation, and
 ///         encrypted regulatory cap registry for CovertMRV.
+/// @dev Wave 4: scope encrypted as euint8; companyFacilities + hasSubmitted
+///      made private to prevent metadata leakage (privacy gaps #1-#6).
 contract CapRegistry is DisclosureACL {
-    /// @notice ISO 14064 / GHG Protocol emissions scope categories.
-    enum Scope {
-        SCOPE1, // Direct emissions (combustion, processes, fugitive)
-        SCOPE2, // Indirect — purchased electricity, heat, steam, cooling
-        SCOPE3  // All other indirect — value chain, travel, waste, etc.
-    }
-
     struct FacilityData {
         euint64 encryptedEmissions;
+        euint8  encryptedScope;    // ISO 14064 scope — encrypted (Wave 4 fix)
         uint256 reportingPeriod;
-        uint256 reportingYear;
-        Scope   scope;
+        uint256 reportingYear;     // stored but NOT emitted in event
         bool    submitted;
     }
 
     // company => facilityId => FacilityData
     mapping(address => mapping(uint256 => FacilityData)) private facilityEmissions;
-    // company => sorted list of facility ids that have ever been submitted
-    mapping(address => uint256[]) public companyFacilities;
+    // company => sorted list of facility ids — private (was public, gap #1)
+    mapping(address => uint256[]) private companyFacilities;
     // company => encrypted aggregated total
     mapping(address => euint64) private companyTotals;
     // company => encrypted regulatory cap (set by owner/regulator)
     mapping(address => euint64) private regulatoryCaps;
-    // company => has any emissions been submitted?
-    mapping(address => bool) public hasSubmitted;
+    // company => has any emissions been submitted — private (was public, gap #2)
+    mapping(address => bool) private hasSubmitted;
+    // company => encrypted facility count (gap #1 fix)
+    mapping(address => euint64) private encryptedFacilityCounts;
 
     event EmissionsSubmitted(
         address indexed company,
         uint256 indexed facilityId,
-        uint256 reportingPeriod,
-        uint256 reportingYear,
-        Scope   scope
+        uint256 reportingPeriod
+        // reportingYear and scope removed from event — sensitive metadata (gaps #4, #6)
     );
     event TotalAggregated(address indexed company, uint256 facilityCount);
     event CapSet(address indexed company);
@@ -54,14 +50,14 @@ contract CapRegistry is DisclosureACL {
 
     /// @notice Submit an encrypted emissions value for a facility.
     /// @param _facilityId    Caller-assigned facility identifier.
-    /// @param _encEmissions  Client-encrypted uint64 emissions value.
+    /// @param _encEmissions  Client-encrypted uint64 emissions value (tCO2e).
+    /// @param _encScope      Client-encrypted ISO 14064 scope (0=Scope1, 1=Scope2, 2=Scope3).
     /// @param _reportingYear ISO year for this report (e.g. 2025).
-    /// @param _scope         ISO 14064 scope category (0=Scope1, 1=Scope2, 2=Scope3).
     function submitEmissions(
         uint256 _facilityId,
         InEuint64 calldata _encEmissions,
-        uint256 _reportingYear,
-        Scope _scope
+        InEuint8 calldata _encScope,
+        uint256 _reportingYear
     ) external {
         require(
             roles[msg.sender] == Role.EMITTER || msg.sender == owner,
@@ -72,33 +68,38 @@ contract CapRegistry is DisclosureACL {
         FHE.allowThis(emissions);
         FHE.allow(emissions, msg.sender);
 
+        euint8 scope = FHE.asEuint8(_encScope);
+        FHE.allowThis(scope);
+        FHE.allow(scope, msg.sender);
+
         FacilityData storage f = facilityEmissions[msg.sender][_facilityId];
         bool isNew = !f.submitted;
         f.encryptedEmissions = emissions;
+        f.encryptedScope = scope;
         f.reportingPeriod = block.timestamp;
         f.reportingYear = _reportingYear;
-        f.scope = _scope;
         f.submitted = true;
 
         if (isNew) {
             companyFacilities[msg.sender].push(_facilityId);
+            _incrementEncryptedCount(msg.sender);
         }
         hasSubmitted[msg.sender] = true;
 
-        emit EmissionsSubmitted(msg.sender, _facilityId, block.timestamp, _reportingYear, _scope);
+        emit EmissionsSubmitted(msg.sender, _facilityId, block.timestamp);
     }
 
     /// @notice Submit emissions for multiple facilities in a single transaction.
-    ///         All facilities share the same reporting year and scope category.
+    ///         Each facility has its own encrypted scope.
     /// @param _facilityIds    Array of facility identifiers.
     /// @param _encEmissions   Parallel array of encrypted emissions values.
+    /// @param _encScopes      Parallel array of encrypted ISO 14064 scope categories.
     /// @param _reportingYear  ISO year for this batch report (e.g. 2025).
-    /// @param _scope          ISO 14064 scope category (0=Scope1, 1=Scope2, 2=Scope3).
     function batchSubmitEmissions(
         uint256[] calldata _facilityIds,
         InEuint64[] calldata _encEmissions,
-        uint256 _reportingYear,
-        Scope _scope
+        InEuint8[] calldata _encScopes,
+        uint256 _reportingYear
     ) external {
         require(
             roles[msg.sender] == Role.EMITTER || msg.sender == owner,
@@ -106,7 +107,7 @@ contract CapRegistry is DisclosureACL {
         );
         uint256 len = _facilityIds.length;
         require(len > 0, "Empty batch");
-        require(len == _encEmissions.length, "Length mismatch");
+        require(len == _encEmissions.length && len == _encScopes.length, "Length mismatch");
 
         address sender = msg.sender;
         uint256 ts = block.timestamp;
@@ -117,17 +118,22 @@ contract CapRegistry is DisclosureACL {
             FHE.allowThis(emissions);
             FHE.allow(emissions, sender);
 
+            euint8 scope = FHE.asEuint8(_encScopes[i]);
+            FHE.allowThis(scope);
+            FHE.allow(scope, sender);
+
             FacilityData storage f = facilityEmissions[sender][fid];
             if (!f.submitted) {
                 companyFacilities[sender].push(fid);
+                _incrementEncryptedCount(sender);
             }
             f.encryptedEmissions = emissions;
+            f.encryptedScope = scope;
             f.reportingPeriod = ts;
             f.reportingYear = _reportingYear;
-            f.scope = _scope;
             f.submitted = true;
 
-            emit EmissionsSubmitted(sender, fid, ts, _reportingYear, _scope);
+            emit EmissionsSubmitted(sender, fid, ts);
 
             unchecked { ++i; }
         }
@@ -235,15 +241,16 @@ contract CapRegistry is DisclosureACL {
         return facilityEmissions[msg.sender][_facilityId].encryptedEmissions;
     }
 
-    function getFacilityIds(
-        address _company
-    ) external view returns (uint256[] memory) {
-        return companyFacilities[_company];
+    /// @notice Returns the encrypted facility count for a company.
+    ///         Caller needs FHE.allow to decrypt the returned handle.
+    function getEncryptedFacilityCount(address _company) external view returns (euint64) {
+        return encryptedFacilityCounts[_company];
     }
 
-    function getFacilityCount(
-        address _company
-    ) external view returns (uint256) {
+    /// @notice Returns the plaintext facility count — restricted to owner or the company itself.
+    ///         Third parties cannot enumerate another company's facility count (privacy gap #1 fix).
+    function getFacilityCount(address _company) external view returns (uint256) {
+        require(msg.sender == owner || msg.sender == _company, "Unauthorized");
         return companyFacilities[_company].length;
     }
 
@@ -261,10 +268,38 @@ contract CapRegistry is DisclosureACL {
         return facilityEmissions[_company][_facilityId].submitted;
     }
 
+    /// @notice Returns the encrypted scope handle for a facility.
+    ///         Caller needs FHE.allow to decrypt (granted via grantFacilityDecrypt).
     function getFacilityScope(
         address _company,
         uint256 _facilityId
-    ) external view returns (Scope) {
-        return facilityEmissions[_company][_facilityId].scope;
+    ) external view returns (euint8) {
+        return facilityEmissions[_company][_facilityId].encryptedScope;
+    }
+
+    /// @notice Company grants an address decrypt access to a specific facility's
+    ///         emissions value and scope — used for timed auditor disclosure.
+    function grantFacilityDecrypt(uint256 _facilityId, address _to) external {
+        FacilityData storage f = facilityEmissions[msg.sender][_facilityId];
+        require(f.submitted, "Not submitted");
+        FHE.allow(f.encryptedEmissions, _to);
+        FHE.allow(f.encryptedScope, _to);
+    }
+
+    // ─── Private helpers ─────────────────────────────────────────────────
+
+    /// @dev Increments the encrypted facility counter for a company.
+    ///      Uses FHE.asEuint64(1) trivial encryption as the addend.
+    function _incrementEncryptedCount(address _company) private {
+        euint64 prev = encryptedFacilityCounts[_company];
+        euint64 newCount;
+        if (FHE.isInitialized(prev)) {
+            newCount = FHE.add(prev, FHE.asEuint64(1));
+        } else {
+            newCount = FHE.asEuint64(1);
+        }
+        FHE.allowThis(newCount);
+        FHE.allow(newCount, _company);
+        encryptedFacilityCounts[_company] = newCount;
     }
 }

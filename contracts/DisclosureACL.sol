@@ -23,8 +23,8 @@ abstract contract DisclosureACL {
 
     address public owner;
     mapping(address => Role) public roles;
-    // company => auditor => grant
-    mapping(address => mapping(address => AuditGrant)) public auditGrants;
+    // company => auditor => grant — private (was public, gap #7)
+    mapping(address => mapping(address => AuditGrant)) private auditGrants;
 
     event RoleGranted(address indexed user, Role role);
     event AuditAccessGranted(
@@ -110,8 +110,23 @@ abstract contract DisclosureACL {
     }
 
     /// @notice Caller revokes a previously-issued audit grant.
+    ///         Note: FHE.allow grants are permanent on-chain. For true
+    ///         cryptographic revocation, rotate the handle with _rotateHandle.
     function revokeAuditAccess(address _auditor) external {
         auditGrants[msg.sender][_auditor].active = false;
         emit AuditAccessRevoked(msg.sender, _auditor);
+    }
+
+    // ─── Internal FHE handle rotation ─────────────────────────────────────────────
+
+    /// @dev Re-encrypts a euint64 into a fresh handle by adding 0.
+    ///      Prior FHE.allow grants on the old handle become stale — the
+    ///      coprocessor won't serve decryption requests for handles no longer
+    ///      referenced by the contract. Use after revokeAuditAccess when
+    ///      true cryptographic revocation is required.
+    function _rotateHandle(euint64 _old) internal returns (euint64) {
+        euint64 fresh = FHE.add(_old, FHE.asEuint64(0));
+        FHE.allowThis(fresh);
+        return fresh;
     }
 }

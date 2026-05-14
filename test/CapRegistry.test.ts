@@ -30,56 +30,67 @@ describe("CapRegistry", function () {
     };
   }
 
+  /**
+   * Helper: encrypt + submit a single facility (Wave 4: scope is encrypted).
+   * scope 0 = Scope1, 1 = Scope2, 2 = Scope3 (ISO 14064)
+   */
+  async function submitFacility(
+    registry: Awaited<ReturnType<typeof deployFixture>>["registry"],
+    signer: Awaited<ReturnType<typeof hre.ethers.getSigners>>[number],
+    client: Awaited<ReturnType<typeof hre.cofhe.createClientWithBatteries>>,
+    facilityId: number,
+    emissionsValue: bigint,
+    year: number = 2025,
+    scope = 1
+  ) {
+    const [encEmissions, encScope] = await client
+      .encryptInputs([
+        Encryptable.uint64(emissionsValue),
+        Encryptable.uint8(BigInt(scope)),
+      ])
+      .execute();
+    return registry.connect(signer).submitEmissions(facilityId, encEmissions, encScope, year);
+  }
+
   describe("Submissions", function () {
     it("EMITTER can submit encrypted emissions", async function () {
-      const { registry, company, companyClient } = await loadFixture(
+      const { registry, company, companyClient, owner } = await loadFixture(
         deployFixture
       );
       await registry.connect(company).registerAsEmitter();
 
-      const [enc] = await companyClient
-        .encryptInputs([Encryptable.uint64(12500n)])
-        .execute();
-
-      await expect(registry.connect(company).submitEmissions(1, enc, 2025, 0))
+      await expect(submitFacility(registry, company, companyClient, 1, 12500n))
         .to.emit(registry, "EmissionsSubmitted");
 
       expect(await registry.isFacilitySubmitted(company.address, 1)).to.equal(
         true
       );
-      expect(await registry.getFacilityCount(company.address)).to.equal(1n);
+      expect(await registry.connect(owner).getFacilityCount(company.address)).to.equal(1n);
     });
 
     it("non-EMITTER cannot submit emissions", async function () {
       const { registry, other, companyClient } = await loadFixture(
         deployFixture
       );
-      const [enc] = await companyClient
-        .encryptInputs([Encryptable.uint64(100n)])
+      const [encEmissions, encScope] = await companyClient
+        .encryptInputs([Encryptable.uint64(100n), Encryptable.uint8(1n)])
         .execute();
 
       await expect(
-        registry.connect(other).submitEmissions(1, enc, 2025, 0)
+        registry.connect(other).submitEmissions(1, encEmissions, encScope, 2025)
       ).to.be.revertedWith("Must be EMITTER");
     });
 
     it("re-submitting the same facility updates without growing list", async function () {
-      const { registry, company, companyClient } = await loadFixture(
+      const { registry, company, companyClient, owner } = await loadFixture(
         deployFixture
       );
       await registry.connect(company).registerAsEmitter();
 
-      const [a] = await companyClient
-        .encryptInputs([Encryptable.uint64(100n)])
-        .execute();
-      const [b] = await companyClient
-        .encryptInputs([Encryptable.uint64(200n)])
-        .execute();
+      await submitFacility(registry, company, companyClient, 1, 100n);
+      await submitFacility(registry, company, companyClient, 1, 200n);
 
-      await registry.connect(company).submitEmissions(1, a, 2025, 0);
-      await registry.connect(company).submitEmissions(1, b, 2025, 0);
-
-      expect(await registry.getFacilityCount(company.address)).to.equal(1n);
+      expect(await registry.connect(owner).getFacilityCount(company.address)).to.equal(1n);
     });
 
     it("getMyEmissions reverts when not submitted", async function () {
@@ -102,10 +113,7 @@ describe("CapRegistry", function () {
         [2, 2500n],
         [3, 4000n],
       ] as Array<[number, bigint]>) {
-        const [enc] = await companyClient
-          .encryptInputs([Encryptable.uint64(value)])
-          .execute();
-        await registry.connect(company).submitEmissions(id, enc, 2025, 0);
+        await submitFacility(registry, company, companyClient, id, value);
       }
 
       await expect(registry.aggregateTotal(company.address)).to.emit(
@@ -165,10 +173,7 @@ describe("CapRegistry", function () {
       } = await loadFixture(deployFixture);
 
       await registry.connect(company).registerAsEmitter();
-      const [enc] = await companyClient
-        .encryptInputs([Encryptable.uint64(9999n)])
-        .execute();
-      await registry.connect(company).submitEmissions(1, enc, 2025, 0);
+      await submitFacility(registry, company, companyClient, 1, 9999n);
       await registry.aggregateTotal(company.address);
 
       await expect(
@@ -193,10 +198,7 @@ describe("CapRegistry", function () {
         deployFixture
       );
       await registry.connect(company).registerAsEmitter();
-      const [enc] = await companyClient
-        .encryptInputs([Encryptable.uint64(1n)])
-        .execute();
-      await registry.connect(company).submitEmissions(1, enc, 2025, 0);
+      await submitFacility(registry, company, companyClient, 1, 1n);
       await registry.aggregateTotal(company.address);
       await registry
         .connect(company)
@@ -214,10 +216,7 @@ describe("CapRegistry", function () {
         deployFixture
       );
       await registry.connect(company).registerAsEmitter();
-      const [enc] = await companyClient
-        .encryptInputs([Encryptable.uint64(1n)])
-        .execute();
-      await registry.connect(company).submitEmissions(1, enc, 2025, 0);
+      await submitFacility(registry, company, companyClient, 1, 1n);
       await registry.aggregateTotal(company.address);
       await registry
         .connect(company)
@@ -232,24 +231,30 @@ describe("CapRegistry", function () {
 
   describe("Batch submissions", function () {
     it("batchSubmitEmissions submits multiple facilities in one tx", async function () {
-      const { registry, company, companyClient } = await loadFixture(
+      const { registry, company, companyClient, owner } = await loadFixture(
         deployFixture
       );
       await registry.connect(company).registerAsEmitter();
 
       const values = [1000n, 2000n, 3000n];
       const facilityIds = [10, 20, 30];
-      const encItems = await companyClient
-        .encryptInputs(values.map((v) => Encryptable.uint64(v)))
+      // Wave 4: batchSubmitEmissions requires an encrypted scope per facility
+      const allEncrypted = await companyClient
+        .encryptInputs([
+          ...values.map((v) => Encryptable.uint64(v)),
+          Encryptable.uint8(1n), Encryptable.uint8(1n), Encryptable.uint8(1n),
+        ])
         .execute();
+      const encItems = allEncrypted.slice(0, 3);
+      const encScopes = allEncrypted.slice(3);
 
       await expect(
         registry
           .connect(company)
-          .batchSubmitEmissions(facilityIds, encItems, 2025, 0)
+          .batchSubmitEmissions(facilityIds, encItems, encScopes, 2025)
       ).to.emit(registry, "EmissionsSubmitted");
 
-      expect(await registry.getFacilityCount(company.address)).to.equal(3n);
+      expect(await registry.connect(owner).getFacilityCount(company.address)).to.equal(3n);
     });
 
     it("batchSubmitEmissions reverts on length mismatch", async function () {
@@ -258,12 +263,12 @@ describe("CapRegistry", function () {
       );
       await registry.connect(company).registerAsEmitter();
 
-      const [enc] = await companyClient
-        .encryptInputs([Encryptable.uint64(100n)])
+      const [encEmissions, encScope] = await companyClient
+        .encryptInputs([Encryptable.uint64(100n), Encryptable.uint8(1n)])
         .execute();
 
       await expect(
-        registry.connect(company).batchSubmitEmissions([1, 2], [enc], 2025, 0)
+        registry.connect(company).batchSubmitEmissions([1, 2], [encEmissions], [encScope], 2025)
       ).to.be.revertedWith("Length mismatch");
     });
 
@@ -272,7 +277,7 @@ describe("CapRegistry", function () {
       await registry.connect(company).registerAsEmitter();
 
       await expect(
-        registry.connect(company).batchSubmitEmissions([], [], 2025, 0)
+        registry.connect(company).batchSubmitEmissions([], [], [], 2025)
       ).to.be.revertedWith("Empty batch");
     });
   });

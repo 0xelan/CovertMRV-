@@ -22,6 +22,7 @@ contract CapCheck {
     CapRegistry public immutable registry;
     IComplianceCertificate public certificate;
     address public owner;
+    address public creditIssuer; // CreditIssuer contract — auto-granted ebool access
 
     struct ComplianceResult {
         ebool encryptedResult;
@@ -51,6 +52,13 @@ contract CapCheck {
         certificate = IComplianceCertificate(_certificate);
     }
 
+    /// @notice Link the CreditIssuer contract so it can read compliance ebools.
+    function setCreditIssuer(address _creditIssuer) external {
+        require(msg.sender == owner, "Only owner");
+        require(_creditIssuer != address(0), "zero address");
+        creditIssuer = _creditIssuer;
+    }
+
     /// @notice Run the encrypted FHE.lte(total, cap) comparison and store
     ///         the resulting ebool. Both the company and the regulator
     ///         (owner) get decrypt access.
@@ -70,6 +78,10 @@ contract CapCheck {
         FHE.allow(result, owner);
         // Company sees its own status.
         FHE.allow(result, _company);
+        // CreditIssuer (if set) gets access to use in FHE.select for conditional mint.
+        if (creditIssuer != address(0)) {
+            FHE.allow(result, creditIssuer);
+        }
 
         ComplianceResult storage stored = complianceResults[_company];
         stored.encryptedResult = result;

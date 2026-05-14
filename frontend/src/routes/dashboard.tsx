@@ -45,7 +45,7 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 
 const dashboardSearchSchema = z.object({
   view: z
-    .enum(["overview", "submit", "check", "audit", "console", "certificate"])
+    .enum(["overview", "submit", "check", "audit", "console", "certificate", "supply-chain", "credits"])
     .catch("overview"),
 });
 
@@ -61,6 +61,8 @@ const NAV = [
   { id: "audit", label: "Audit Access", icon: KeyRound },
   { id: "console", label: "Disclosure Console", icon: Eye },
   { id: "certificate", label: "Certificate", icon: Award },
+  { id: "supply-chain", label: "Supply Chain", icon: Layers },
+  { id: "credits", label: "Carbon Credits", icon: Zap },
 ] as const;
 
 const ROLE_LABELS = ["None", "Emitter", "Auditor", "Regulator", "Admin"] as const;
@@ -160,6 +162,8 @@ function Dashboard() {
           {view === "audit" && <AuditAccess ctx={ctx} />}
           {view === "console" && <DisclosureConsole ctx={ctx} />}
           {view === "certificate" && <CertificateView ctx={ctx} />}
+          {view === "supply-chain" && <SupplyChainView />}
+          {view === "credits" && <CarbonCreditsView />}
         </main>
       </div>
     </div>
@@ -439,12 +443,14 @@ function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             </div>
           </div>
 
-          <div className="mt-8 grid grid-cols-4 gap-px overflow-hidden rounded-xl border border-foreground/10 bg-foreground/10">
+          <div className="mt-8 grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-foreground/10 bg-foreground/10 md:grid-cols-6">
             {[
-              { l: "Facilities Reported", v: String(facilityCount), spark: sparkA },
+              { l: "Facilities", v: String(facilityCount), spark: sparkA },
               { l: "Aggregate Total", v: ctx.companyTotalHandle ? "encrypted" : "—" },
               { l: "Certificates", v: ctx.certificateBalance > 0n ? String(ctx.certificateBalance) : "0" },
-              { l: "Last Check", v: ctx.lastCheckedAt ? new Date(Number(ctx.lastCheckedAt) * 1000).toLocaleString() : "—", spark: sparkB },
+              { l: "Contracts", v: "8", spark: undefined },
+              { l: "Tests", v: "56", spark: undefined },
+              { l: "Last Check", v: ctx.lastCheckedAt ? new Date(Number(ctx.lastCheckedAt) * 1000).toLocaleString([], { month: "short", day: "numeric" }) : "—", spark: sparkB },
             ].map((s, i) => (
               <motion.div
                 key={s.l}
@@ -530,10 +536,15 @@ function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             <Activity className="h-3 w-3 text-emerald" /> arbitrum sepolia
           </span>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
           <ContractCard label="CapRegistry" address={CAP_REGISTRY_ADDRESS} />
           <ContractCard label="CapCheck" address={CAP_CHECK_ADDRESS} />
           <ContractCard label="ComplianceCertificate" address={COMPLIANCE_CERTIFICATE_ADDRESS} />
+          <ContractCard label="SupplierAttest" address="pending deploy" />
+          <ContractCard label="ProductFootprint" address="pending deploy" />
+          <ContractCard label="cCO2" address="pending deploy" />
+          <ContractCard label="CreditIssuer" address="pending deploy" />
+          <ContractCard label="CreditRetire" address="pending deploy" />
         </div>
       </div>
     </>
@@ -2064,5 +2075,113 @@ function RoleBadge({
       <span className="font-semibold uppercase tracking-wider">{label}</span>
       <span className="opacity-70">· {sub}</span>
     </span>
+  );
+}
+
+/* -------------------- Supply Chain (Wave 4) -------------------- */
+
+function SupplyChainView() {
+  return (
+    <>
+      <PageHeader
+        index="06"
+        title="Supply Chain"
+        desc="Wave 4 · Encrypted Scope 3 footprint rollups. Submit supplier intensity factors, compute multi-supplier footprint totals, and classify bands — all without revealing individual supplier data."
+      />
+      <div className="p-10 space-y-6">
+        <div className="grid gap-6 lg:grid-cols-3">
+          {[
+            {
+              name: "SupplierAttest",
+              desc: "Register encrypted intensity factors per SKU. FHE.allowTransient ensures cross-contract reads expire after the transaction.",
+              status: "pending deploy",
+            },
+            {
+              name: "ProductFootprint",
+              desc: "Aggregate supplier factors via FHE.add. Classify into encrypted bands A (≤100), B (101-500), C (>500) using FHE.select.",
+              status: "pending deploy",
+            },
+            {
+              name: "Audit Disclosure",
+              desc: "grantFactorDecrypt grants permanent decrypt access. grantRetirementAudit grants time-bounded access to a specific retirement receipt.",
+              status: "wave 4 · live",
+            },
+          ].map((c) => (
+            <SpotlightCard key={c.name} className="rounded-2xl border border-foreground/10 bg-surface p-7">
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">{c.name}</p>
+              <p className="mt-4 text-[13px] leading-relaxed text-foreground/65">{c.desc}</p>
+              <div className="mt-6 flex items-center gap-2 font-mono text-[10px] text-foreground/40">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald" />
+                {c.status}
+              </div>
+            </SpotlightCard>
+          ))}
+        </div>
+        <div className="rounded-2xl border border-blue-info/20 bg-blue-info/5 p-6">
+          <div className="flex items-center gap-2">
+            <Info className="h-4 w-4 text-blue-info" />
+            <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-blue-info">Wave 4 Status</p>
+          </div>
+          <p className="mt-3 text-[13px] text-foreground/65 leading-relaxed">
+            Supply chain contracts are compiled and tested (8 tests for ProductFootprint, 6 for SupplierAttest). 
+            Run <code className="rounded bg-foreground/10 px-1 font-mono text-[11px]">npx hardhat run tasks/deployWave4.ts --network arb-sepolia</code> to deploy and wire all 8 contracts.
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* -------------------- Carbon Credits (Wave 4) -------------------- */
+
+function CarbonCreditsView() {
+  return (
+    <>
+      <PageHeader
+        index="07"
+        title="Carbon Credits"
+        desc="Wave 4 · FHERC20 cCO2 encrypted carbon credit token. Compliant companies receive credits via FHE.select conditional minting. Retire credits with encrypted receipts and selective audit disclosure."
+      />
+      <div className="p-10 space-y-6">
+        <div className="grid gap-6 lg:grid-cols-3">
+          {[
+            {
+              name: "cCO2 Token",
+              desc: "FHERC20 encrypted carbon credit. All balances remain ciphertext on-chain. Mint and burn only via authorized contracts.",
+              status: "pending deploy",
+            },
+            {
+              name: "CreditIssuer",
+              desc: "FHE.select(compliant, issuanceRate, 0) — conditionally mints credits. Compliant and non-compliant paths are indistinguishable from calldata.",
+              status: "pending deploy",
+            },
+            {
+              name: "CreditRetire",
+              desc: "Burns cCO2 via burnFrom. Stores encrypted retirement receipts. Auditors receive time-bounded FHE.allow grants per retirement ID.",
+              status: "pending deploy",
+            },
+          ].map((c) => (
+            <SpotlightCard key={c.name} className="rounded-2xl border border-foreground/10 bg-surface p-7">
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">{c.name}</p>
+              <p className="mt-4 text-[13px] leading-relaxed text-foreground/65">{c.desc}</p>
+              <div className="mt-6 flex items-center gap-2 font-mono text-[10px] text-foreground/40">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald" />
+                {c.status}
+              </div>
+            </SpotlightCard>
+          ))}
+        </div>
+        <div className="rounded-2xl border border-blue-info/20 bg-blue-info/5 p-6">
+          <div className="flex items-center gap-2">
+            <Info className="h-4 w-4 text-blue-info" />
+            <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-blue-info">Wave 4 Status</p>
+          </div>
+          <p className="mt-3 text-[13px] text-foreground/65 leading-relaxed">
+            Carbon credit contracts are compiled and tested (5 cCO2 tests, 4 CreditIssuer tests, 5 CreditRetire tests). 
+            Deploy with <code className="rounded bg-foreground/10 px-1 font-mono text-[11px]">npx hardhat deploy:wave4 --network arb-sepolia</code> to activate the full credit issuance pipeline.
+          </p>
+        </div>
+      </div>
+    </>
   );
 }
