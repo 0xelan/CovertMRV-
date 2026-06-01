@@ -165,7 +165,6 @@ function Dashboard() {
         <main className="min-h-screen overflow-x-hidden">
           <ChainGuard />
           {!isConnected && <DisconnectedBanner />}
-          {isConnected && ctx.role === 0 && <NotRegisteredBanner ctx={ctx} />}
           {view === "overview" && <Overview ctx={ctx} />}
           {view === "submit" && <SubmitEmissions ctx={ctx} />}
           {view === "check" && <ComplianceCheck ctx={ctx} />}
@@ -194,44 +193,128 @@ function DisconnectedBanner() {
   );
 }
 
-function NotRegisteredBanner({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
+function EmitterRegistrationCard({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const [pending, setPending] = useState(false);
   const [hash, setHash] = useState<`0x${string}` | undefined>();
+  const [error, setError] = useState<string | null>(null);
   const { isLoading, isSuccess } = useWaitForTransactionReceipt({ hash });
   const handledSuccess = useRef(false);
+
   useEffect(() => {
     if (!isSuccess || handledSuccess.current) return;
     handledSuccess.current = true;
     ctx.refetch();
     setPending(false);
   }, [isSuccess, ctx.refetch]);
+
+  if (ctx.role > 0) return null;
+
+  async function register() {
+    setError(null);
+    handledSuccess.current = false;
+    try {
+      setPending(true);
+      const h = await ctx.registerAsEmitter();
+      setHash(h);
+    } catch (e) {
+      setPending(false);
+      setError((e as Error).message);
+    }
+  }
+
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-info/30 bg-blue-info/5 px-10 py-3">
-      <div className="flex items-center gap-2 text-[13px] text-foreground/75">
-        <UserCheck className="h-4 w-4 text-blue-info" />
-        You are not yet registered as an Emitter. Self-register to begin
-        submitting encrypted emissions reports.
-      </div>
-      <button
-        disabled={pending || isLoading}
-        onClick={async () => {
-          try {
-            setPending(true);
-            const h = await ctx.registerAsEmitter();
-            setHash(h);
-          } catch (e) {
-            setPending(false);
-            console.error(e);
-          }
-        }}
-        className="inline-flex items-center gap-2 rounded-full border border-blue-info/40 bg-blue-info/10 px-4 py-1.5 text-[12px] font-semibold text-blue-info transition hover:bg-blue-info/20 disabled:opacity-60"
-      >
-        {pending || isLoading ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : null}
-        Register as Emitter
-      </button>
-    </div>
+    <motion.div
+      className="px-10 pt-2"
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: EASE }}
+    >
+      <SpotlightCard className="relative overflow-hidden rounded-2xl border border-blue-info/35 bg-gradient-to-br from-blue-info/[0.12] via-surface to-emerald/[0.06] p-8 md:p-10">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-info/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-emerald/10 blur-3xl" />
+
+        <div className="relative flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-info/40 bg-blue-info/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-blue-info">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-info" />
+              Required · one-time setup
+            </div>
+            <div className="mt-5 flex items-start gap-4">
+              <div className="flex h-14 w-14 flex-none items-center justify-center rounded-2xl border border-blue-info/30 bg-blue-info/10">
+                <UserCheck className="h-7 w-7 text-blue-info" strokeWidth={1.5} />
+              </div>
+              <div>
+                <h2 className="font-display text-2xl font-normal tracking-tight md:text-3xl">
+                  Register as an Emitter
+                </h2>
+                <p className="mt-3 text-[15px] leading-relaxed text-foreground/70">
+                  Your wallet is connected, but it is not yet authorized to submit encrypted
+                  emissions on CapRegistry. This one on-chain registration unlocks the full
+                  compliance console: submit, aggregate, check, audit grants, and disclosure.
+                </p>
+              </div>
+            </div>
+
+            <ol className="mt-8 space-y-3">
+              {[
+                "Confirm the transaction in your wallet (CapRegistry.registerAsEmitter).",
+                "Submit encrypted facility emissions from the Submit Emissions tab.",
+                "Aggregate your total, then run an encrypted compliance check against your cap.",
+              ].map((step, i) => (
+                <li
+                  key={step}
+                  className="flex items-start gap-3 rounded-lg border border-foreground/10 bg-background/60 px-4 py-3 text-[13px] text-foreground/75"
+                >
+                  <span className="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full bg-emerald/15 font-mono text-[10px] font-semibold text-emerald">
+                    {i + 1}
+                  </span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+
+            {error && (
+              <p className="mt-4 inline-flex items-center gap-2 font-mono text-[12px] text-destructive">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {error}
+              </p>
+            )}
+            {hash && (
+              <p className="mt-4 font-mono text-[11px] text-foreground/50">
+                {isSuccess ? "Registered ✓" : isLoading ? "Confirming…" : "Submitted"} ·{" "}
+                <a
+                  href={`https://sepolia.arbiscan.io/tx/${hash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-emerald underline"
+                >
+                  {shortHandle(hash)}
+                </a>
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3 lg:min-w-[220px]">
+            <button
+              type="button"
+              disabled={pending || isLoading}
+              onClick={() => void register()}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-foreground px-8 py-4 text-[15px] font-semibold text-background shadow-lg transition hover:bg-foreground/90 disabled:opacity-60"
+            >
+              {pending || isLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <UserCheck className="h-5 w-5" />
+              )}
+              Register as Emitter
+            </button>
+            <p className="text-center font-mono text-[10px] uppercase tracking-wider text-foreground/45">
+              Gas ~150k · Arb Sepolia
+            </p>
+          </div>
+        </div>
+      </SpotlightCard>
+    </motion.div>
   );
 }
 
@@ -424,6 +507,7 @@ function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
         title="Overview"
         desc="Compliance posture for the current reporting period. All values remain encrypted on-chain; only authorized roles can decrypt."
       />
+      {ctx.role === 0 && <EmitterRegistrationCard ctx={ctx} />}
       <div className="grid gap-6 p-10 lg:grid-cols-3">
         <SpotlightCard className="rounded-2xl border border-foreground/10 bg-surface p-7 lg:col-span-2">
           <div className="flex items-center justify-between">
