@@ -32,7 +32,12 @@ import {
   recordSubmittedFacilityIds,
 } from "@/lib/submitted-facilities";
 import { useFHEStatus } from "./useFHEStatus";
-import { isInitializedCtHandle, parseCtHandle } from "@/lib/ct-handle";
+import {
+  isInitializedCtHandle,
+  parseComplianceRecord,
+  parseCtHandle,
+  parseSettledStatus,
+} from "@/lib/ct-handle";
 
 const GAS = {
   registerAsEmitter: 150_000n,
@@ -86,8 +91,8 @@ export function useCovertMrv(reportingYear: number = new Date().getFullYear()) {
       setTrackedFacilityIds([]);
       return;
     }
-    setTrackedFacilityIds(loadSubmittedFacilityIds(address));
-  }, [address]);
+    setTrackedFacilityIds(loadSubmittedFacilityIds(address, reportingYear));
+  }, [address, reportingYear]);
 
   useEffect(() => {
     if (!publicClient || !address) return;
@@ -115,7 +120,7 @@ export function useCovertMrv(reportingYear: number = new Date().getFullYear()) {
       }
       if (cancelled || found.length === 0) return;
       found.sort((a, b) => (a > b ? 1 : a < b ? -1 : 0));
-      recordSubmittedFacilityIds(address, found);
+      recordSubmittedFacilityIds(address, reportingYear, found);
       setTrackedFacilityIds(found);
     })();
 
@@ -231,8 +236,9 @@ export function useCovertMrv(reportingYear: number = new Date().getFullYear()) {
         });
         fhe.setStep("READY");
         if (address) {
-          const updated = recordSubmittedFacilityIds(address, [facilityId]);
+          const updated = recordSubmittedFacilityIds(address, reportingYear, [facilityId]);
           setTrackedFacilityIds(updated);
+          void facilityCountRead.refetch();
         }
         return hash;
       } catch (err) {
@@ -270,8 +276,9 @@ export function useCovertMrv(reportingYear: number = new Date().getFullYear()) {
         });
         fhe.setStep("READY");
         if (address) {
-          const updated = recordSubmittedFacilityIds(address, facilityIds_);
+          const updated = recordSubmittedFacilityIds(address, reportingYear, facilityIds_);
           setTrackedFacilityIds(updated);
+          void facilityCountRead.refetch();
         }
         return hash;
       } catch (err) {
@@ -285,11 +292,24 @@ export function useCovertMrv(reportingYear: number = new Date().getFullYear()) {
 
   const aggregateTotal = useCallback(
     async (company: `0x${string}`, year: number = reportingYear) => {
-      const { publicClient: pc } = ensureClients();
-      const facilityCount = BigInt(
-        Number(facilityCountRead.data ?? 0n) || trackedFacilityIds.length || 1,
-      );
-      const gas = GAS.aggregateBase + GAS.aggregatePerFacility * facilityCount;
+      const { publicClient: pc, address: acct } = ensureClients();
+      if (Number(myRole.data ?? 0) === 0) {
+        throw new Error("Register as an emitter before aggregating.");
+      }
+      const chainCount = await pc.readContract({
+        address: CAP_REGISTRY_ADDRESS,
+        abi: CAP_REGISTRY_ABI,
+        functionName: "getFacilityCount",
+        args: [company, BigInt(year)],
+        account: acct,
+      });
+      const count = Number(chainCount);
+      if (count === 0) {
+        throw new Error(
+          `No facility submissions on-chain for reporting year ${year}. Submit emissions for this year first.`,
+        );
+      }
+      const gas = GAS.aggregateBase + GAS.aggregatePerFacility * BigInt(count);
       const fees = await getGasFees(pc);
       return writeContractAsync({
         address: CAP_REGISTRY_ADDRESS,
@@ -305,8 +325,7 @@ export function useCovertMrv(reportingYear: number = new Date().getFullYear()) {
       publicClient,
       walletClient,
       writeContractAsync,
-      facilityCountRead.data,
-      trackedFacilityIds.length,
+      myRole.data,
       reportingYear,
     ],
   );
@@ -591,21 +610,20 @@ export function useCovertMrv(reportingYear: number = new Date().getFullYear()) {
       (owner.data as string).toLowerCase() === address.toLowerCase(),
     role: (myRole.data ?? 0) as number,
     facilityCount: Number(facilityCountRead.data ?? 0n),
+    canAggregate:
+      Number(myRole.data ?? 0) > 0 && Number(facilityCountRead.data ?? 0n) > 0,
     facilityIds: trackedFacilityIds,
     companyTotalHandle: parseCtHandle(companyTotalHandle.data),
-    hasAggregated:
-      companyTotalHandle.isSuccess && isInitializedCtHandle(companyTotalHandle.data),
+    hasAggregated: isInitializedCtHandle(companyTotalHandle.data),
     regulatoryCapHandle: parseCtHandle(regulatoryCapHandle.data),
-    hasCapSet:
-      regulatoryCapHandle.isSuccess && isInitializedCtHandle(regulatoryCapHandle.data),
+    hasCapSet: isInitializedCtHandle(regulatoryCapHandle.data),
     complianceHandle: parseCtHandle(complianceHandle.data),
-    complianceExists: Boolean(
-      complianceRecord.data && (complianceRecord.data as { exists: boolean }).exists,
-    ),
+    complianceRecord: parseComplianceRecord(complianceRecord.data),
+    complianceExists: Boolean(parseComplianceRecord(complianceRecord.data)?.exists),
     hasComplianceResult:
-      Boolean(complianceRecord.data && (complianceRecord.data as { exists: boolean }).exists) &&
+      Boolean(parseComplianceRecord(complianceRecord.data)?.exists) &&
       isInitializedCtHandle(complianceHandle.data),
-    settled: settledStatus.data as readonly [boolean, boolean] | undefined,
+    settled: parseSettledStatus(settledStatus.data),
     lastCheckedAt: (lastCheckedAt.data ?? 0n) as bigint,
     auditGrantExpiry: 0n,
     auditGrantActive: false,

@@ -1070,12 +1070,24 @@ function SubmitEmissions({
             </button>
             <button
               type="button"
-              disabled={!ctx.address || ctx.facilityIds.length === 0}
+              disabled={
+                !ctx.address ||
+                !ctx.canAggregate ||
+                ctx.role === 0 ||
+                aggTx.isLoading
+              }
+              title={
+                ctx.role === 0
+                  ? "Register as emitter first"
+                  : !ctx.canAggregate
+                    ? `Submit at least one facility for ${reportingYear} on-chain`
+                    : undefined
+              }
               onClick={aggregate}
               className="inline-flex items-center gap-2 rounded-full border border-foreground/20 bg-foreground/[0.04] px-6 py-3 text-[13px] font-semibold text-foreground transition hover:border-emerald disabled:opacity-60"
             >
               {aggTx.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-              Aggregate Total ({ctx.facilityIds.length})
+              Aggregate Total ({ctx.facilityCount || ctx.facilityIds.length})
             </button>
           </div>
           {aggHash && (
@@ -1316,6 +1328,10 @@ function ComplianceCheck({
   const decryptInFlight = useRef(false);
 
   useEffect(() => {
+    ctx.refetch();
+  }, [ctx.refetch, reportingYear]);
+
+  useEffect(() => {
     if (tx.isLoading) setStep(2);
   }, [tx.isLoading]);
 
@@ -1359,7 +1375,15 @@ function ComplianceCheck({
   );
 
   async function doAggregate() {
-    if (!ctx.address || aggregating || aggregateInFlight.current || ctx.hasAggregated) return;
+    if (
+      !ctx.address ||
+      aggregating ||
+      aggregateInFlight.current ||
+      ctx.hasAggregated ||
+      !ctx.canAggregate ||
+      ctx.role === 0
+    )
+      return;
     aggregateInFlight.current = true;
     setError(null);
     setAggregating(true);
@@ -2093,6 +2117,10 @@ function DisclosureConsole({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
 function CertificateView({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const [year, setYear] = useState(String(new Date().getFullYear()));
 
+  useEffect(() => {
+    ctx.refetch();
+  }, [ctx.refetch]);
+
   const settled = ctx.settled?.[0] ?? false;
   const compliant = ctx.settled?.[1] ?? false;
   const hasCert = settled && ctx.certificateBalance > 0n;
@@ -2346,6 +2374,7 @@ function RoleBadge({
 
 function SupplyChainView() {
   const sc = useSupplyChain();
+  const publicClient = usePublicClient();
   const [sku, setSku] = useState("");
   const [factor, setFactor] = useState("");
   const [year, setYear] = useState(String(new Date().getFullYear()));
@@ -2408,7 +2437,25 @@ function SupplyChainView() {
             <input value={year} onChange={(e) => setYear(e.target.value)} className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
           </Field>
           {sc.role === 0 && (
-            <button type="button" onClick={() => void sc.registerAsEmitter()} className="text-[12px] text-blue-info underline">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  setPending("register");
+                  const h = await sc.registerAsEmitter();
+                  if (publicClient) {
+                    await publicClient.waitForTransactionReceipt({ hash: h });
+                  }
+                  await sc.refetchRole();
+                  setMsg({ tone: "ok", text: "Registered on SupplierAttest." });
+                } catch (e) {
+                  setMsg({ tone: "err", text: (e as Error).message });
+                } finally {
+                  setPending(null);
+                }
+              }}
+              className="text-[12px] text-blue-info underline"
+            >
               Register as Emitter on SupplierAttest first
             </button>
           )}
@@ -2482,6 +2529,7 @@ function SupplyChainView() {
 
 function CarbonCreditsView() {
   const credits = useCarbonCredits();
+  const publicClient = usePublicClient();
   const [company, setCompany] = useState("");
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [retireAmount, setRetireAmount] = useState("");
@@ -2514,9 +2562,12 @@ function CarbonCreditsView() {
                 setPending("issue");
                 setMsg(null);
                 const h = await credits.issueCredits(company as `0x${string}`, Number(year));
+                if (publicClient) {
+                  await publicClient.waitForTransactionReceipt({ hash: h });
+                }
                 setTxHash(h);
                 setMsg({ tone: "ok", text: `Credits issued: ${shortHandle(h)}` });
-                credits.refetchBalance();
+                await credits.refetchBalance();
               } catch (e) {
                 const m = (e as Error).message ?? String(e);
                 if (m.includes("Credits already issued")) {

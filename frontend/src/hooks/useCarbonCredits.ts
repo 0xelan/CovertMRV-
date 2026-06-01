@@ -20,6 +20,7 @@ import {
 import { getGasFees } from "@/lib/gas";
 import { decryptUint64, describeFheError, encryptUint64 } from "@/lib/fhe";
 import { useFHEStatus } from "./useFHEStatus";
+import { isInitializedCtHandle, parseCtHandle } from "@/lib/ct-handle";
 
 const GAS = {
   registerAsEmitter: 150_000n,
@@ -135,8 +136,10 @@ export function useCarbonCredits() {
   );
 
   const decryptBalance = useCallback(async () => {
-    const handle = confidentialBalance.data as bigint | undefined;
-    if (!handle) throw new Error("No encrypted balance handle");
+    const handle = parseCtHandle(confidentialBalance.data);
+    if (!isInitializedCtHandle(handle)) {
+      throw new Error("No encrypted cCO2 balance yet — issue credits first, then retry.");
+    }
     const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
     fhe.setStep("COMPUTING");
     const value = await decryptUint64(pc, wc, acct, handle, fhe.setLabel);
@@ -148,8 +151,8 @@ export function useCarbonCredits() {
     address,
     role: (registryRole.data ?? 0) as number,
     balanceIndicator: (balanceIndicator.data ?? 0n) as bigint,
-    confidentialBalanceHandle: (confidentialBalance.data ?? 0n) as bigint,
-    hasBalance: !!(confidentialBalance.data as bigint | undefined),
+    confidentialBalanceHandle: parseCtHandle(confidentialBalance.data),
+    hasBalance: isInitializedCtHandle(confidentialBalance.data),
     fheStep: fhe.step,
     fheStepLabel: fhe.stepLabel,
     fheError: fhe.errorMessage,

@@ -208,6 +208,7 @@ export function useSupplyChain() {
   return {
     address,
     role: (myRole.data ?? 0) as number,
+    refetchRole: myRole.refetch,
     fheStep: fhe.step,
     fheStepLabel: fhe.stepLabel,
     fheError: fhe.errorMessage,
