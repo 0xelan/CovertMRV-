@@ -4,6 +4,9 @@ import { Encryptable, FheTypes } from "@cofhe/sdk";
 import { expect } from "chai";
 import hre from "hardhat";
 
+const YEAR = 2025;
+const YEAR_B = 2026;
+
 describe("CapRegistry", function () {
   async function deployFixture() {
     await hre.run("task:cofhe-mocks:deploy");
@@ -62,10 +65,10 @@ describe("CapRegistry", function () {
       await expect(submitFacility(registry, company, companyClient, 1, 12500n))
         .to.emit(registry, "EmissionsSubmitted");
 
-      expect(await registry.isFacilitySubmitted(company.address, 1)).to.equal(
+      expect(await registry.isFacilitySubmitted(company.address, YEAR, 1)).to.equal(
         true
       );
-      expect(await registry.connect(owner).getFacilityCount(company.address)).to.equal(1n);
+      expect(await registry.connect(owner).getFacilityCount(company.address, YEAR)).to.equal(1n);
     });
 
     it("non-EMITTER cannot submit emissions", async function () {
@@ -90,13 +93,13 @@ describe("CapRegistry", function () {
       await submitFacility(registry, company, companyClient, 1, 100n);
       await submitFacility(registry, company, companyClient, 1, 200n);
 
-      expect(await registry.connect(owner).getFacilityCount(company.address)).to.equal(1n);
+      expect(await registry.connect(owner).getFacilityCount(company.address, YEAR)).to.equal(1n);
     });
 
     it("getMyEmissions reverts when not submitted", async function () {
       const { registry, company } = await loadFixture(deployFixture);
       await registry.connect(company).registerAsEmitter();
-      await expect(registry.connect(company).getMyEmissions(99)).to.be
+      await expect(registry.connect(company).getMyEmissions(99, YEAR)).to.be
         .revertedWith("Not submitted");
     });
   });
@@ -116,12 +119,12 @@ describe("CapRegistry", function () {
         await submitFacility(registry, company, companyClient, id, value);
       }
 
-      await expect(registry.aggregateTotal(company.address)).to.emit(
+      await expect(registry.aggregateTotal(company.address, YEAR)).to.emit(
         registry,
         "TotalAggregated"
       );
 
-      const totalHandle = await registry.getCompanyTotal(company.address);
+      const totalHandle = await registry.getCompanyTotal(company.address, YEAR);
       const decrypted = await companyClient
         .decryptForView(totalHandle, FheTypes.Uint64)
         .execute();
@@ -131,8 +134,24 @@ describe("CapRegistry", function () {
     it("aggregateTotal reverts when no facilities", async function () {
       const { registry, company } = await loadFixture(deployFixture);
       await expect(
-        registry.aggregateTotal(company.address)
+        registry.aggregateTotal(company.address, YEAR)
       ).to.be.revertedWith("No facilities");
+    });
+
+    it("2025 and 2026 totals are isolated", async function () {
+      const { registry, company, companyClient } = await loadFixture(deployFixture);
+      await registry.connect(company).registerAsEmitter();
+      await submitFacility(registry, company, companyClient, 1, 1000n, YEAR);
+      await submitFacility(registry, company, companyClient, 1, 9000n, YEAR_B);
+      await registry.aggregateTotal(company.address, YEAR);
+      await registry.aggregateTotal(company.address, YEAR_B);
+
+      const total2025 = await registry.getCompanyTotal(company.address, YEAR);
+      const total2026 = await registry.getCompanyTotal(company.address, YEAR_B);
+      const d2025 = await companyClient.decryptForView(total2025, FheTypes.Uint64).execute();
+      const d2026 = await companyClient.decryptForView(total2026, FheTypes.Uint64).execute();
+      expect(d2025).to.equal(1000n);
+      expect(d2026).to.equal(9000n);
     });
   });
 
@@ -145,7 +164,7 @@ describe("CapRegistry", function () {
         .encryptInputs([Encryptable.uint64(50000n)])
         .execute();
       await expect(
-        registry.connect(owner).setCap(company.address, enc)
+        registry.connect(owner).setCap(company.address, YEAR, enc)
       ).to.emit(registry, "CapSet");
     });
 
@@ -157,7 +176,7 @@ describe("CapRegistry", function () {
         .encryptInputs([Encryptable.uint64(50000n)])
         .execute();
       await expect(
-        registry.connect(company).setCap(company.address, enc)
+        registry.connect(company).setCap(company.address, YEAR, enc)
       ).to.be.revertedWith("Only owner");
     });
   });
@@ -174,19 +193,19 @@ describe("CapRegistry", function () {
 
       await registry.connect(company).registerAsEmitter();
       await submitFacility(registry, company, companyClient, 1, 9999n);
-      await registry.aggregateTotal(company.address);
+      await registry.aggregateTotal(company.address, YEAR);
 
       await expect(
         registry
           .connect(company)
-          .grantAuditAccessToTotal(auditor.address, 3600)
+          .grantAuditAccessToTotal(auditor.address, YEAR, 3600)
       ).to.emit(registry, "AuditAccessGranted");
 
       expect(
         await registry.isAuditActive(company.address, auditor.address)
       ).to.equal(true);
 
-      const totalHandle = await registry.getCompanyTotal(company.address);
+      const totalHandle = await registry.getCompanyTotal(company.address, YEAR);
       const decrypted = await auditorClient
         .decryptForView(totalHandle, FheTypes.Uint64)
         .execute();
@@ -199,10 +218,10 @@ describe("CapRegistry", function () {
       );
       await registry.connect(company).registerAsEmitter();
       await submitFacility(registry, company, companyClient, 1, 1n);
-      await registry.aggregateTotal(company.address);
+      await registry.aggregateTotal(company.address, YEAR);
       await registry
         .connect(company)
-        .grantAuditAccessToTotal(auditor.address, 60);
+        .grantAuditAccessToTotal(auditor.address, YEAR, 60);
 
       await time.increase(120);
 
@@ -217,10 +236,10 @@ describe("CapRegistry", function () {
       );
       await registry.connect(company).registerAsEmitter();
       await submitFacility(registry, company, companyClient, 1, 1n);
-      await registry.aggregateTotal(company.address);
+      await registry.aggregateTotal(company.address, YEAR);
       await registry
         .connect(company)
-        .grantAuditAccessToTotal(auditor.address, 3600);
+        .grantAuditAccessToTotal(auditor.address, YEAR, 3600);
 
       await registry.connect(company).revokeAuditAccess(auditor.address);
       expect(
@@ -254,7 +273,7 @@ describe("CapRegistry", function () {
           .batchSubmitEmissions(facilityIds, encItems, encScopes, 2025)
       ).to.emit(registry, "EmissionsSubmitted");
 
-      expect(await registry.connect(owner).getFacilityCount(company.address)).to.equal(3n);
+      expect(await registry.connect(owner).getFacilityCount(company.address, YEAR)).to.equal(3n);
     });
 
     it("batchSubmitEmissions reverts on length mismatch", async function () {

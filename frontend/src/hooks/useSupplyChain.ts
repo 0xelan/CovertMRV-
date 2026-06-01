@@ -13,9 +13,10 @@ import {
   PRODUCT_FOOTPRINT_ADDRESS,
 } from "@/config/contracts";
 import { getGasFees } from "@/lib/gas";
-import { decryptUint64, describeFheError, encryptUint64 } from "@/lib/fhe";
+import { decryptUint64, decryptBool, describeFheError, encryptUint64 } from "@/lib/fhe";
 import { useWalletClient } from "wagmi";
 import { useFHEStatus } from "./useFHEStatus";
+import { isInitializedCtHandle, parseCtHandle } from "@/lib/ct-handle";
 
 const GAS = {
   submitFactor: 700_000n,
@@ -146,11 +147,57 @@ export function useSupplyChain() {
     [publicClient, walletClient, writeContractAsync],
   );
 
+  const readStoredFootprint = useCallback(
+    async (sku: string, requester?: Address) => {
+      if (!publicClient) throw new Error("No public client");
+      const who = requester ?? address;
+      if (!who) throw new Error("Wallet not connected");
+      const raw = await publicClient.readContract({
+        address: PRODUCT_FOOTPRINT_ADDRESS,
+        abi: PRODUCT_FOOTPRINT_ABI,
+        functionName: "getFootprintResult",
+        args: [who, skuHash(sku)],
+      });
+      return parseCtHandle(raw);
+    },
+    [publicClient, address],
+  );
+
+  const readStoredThreshold = useCallback(
+    async (sku: string, requester?: Address) => {
+      if (!publicClient) throw new Error("No public client");
+      const who = requester ?? address;
+      if (!who) throw new Error("Wallet not connected");
+      const raw = await publicClient.readContract({
+        address: PRODUCT_FOOTPRINT_ADDRESS,
+        abi: PRODUCT_FOOTPRINT_ABI,
+        functionName: "getThresholdResult",
+        args: [who, skuHash(sku)],
+      });
+      return parseCtHandle(raw);
+    },
+    [publicClient, address],
+  );
+
   const decryptHandle = useCallback(
     async (handle: bigint) => {
       const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
+      if (!isInitializedCtHandle(handle)) throw new Error("No stored result handle — run compute first.");
       fhe.setStep("COMPUTING");
       const value = await decryptUint64(pc, wc, acct, handle, fhe.setLabel);
+      fhe.setStep("READY");
+      return value;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [publicClient, walletClient],
+  );
+
+  const decryptBoolHandle = useCallback(
+    async (handle: bigint) => {
+      const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
+      if (!isInitializedCtHandle(handle)) throw new Error("No stored result handle — run check first.");
+      fhe.setStep("COMPUTING");
+      const value = await decryptBool(pc, wc, acct, handle, fhe.setLabel);
       fhe.setStep("READY");
       return value;
     },
@@ -170,7 +217,10 @@ export function useSupplyChain() {
     computeFootprint,
     classifyBand,
     checkThreshold,
+    readStoredFootprint,
+    readStoredThreshold,
     decryptHandle,
+    decryptBoolHandle,
     skuHash,
   };
 }

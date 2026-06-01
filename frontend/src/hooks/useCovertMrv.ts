@@ -1,19 +1,6 @@
 // frontend/src/hooks/useCovertMrv.ts
-//
-// Single combined hook for every CovertMRV on-chain interaction.
-//
-// Production patterns adopted from audited FHE dApps:
-//   - All writes wrapped in `getGasFees(publicClient)` + explicit `gas:` limits
-//     (prevents Arbitrum-Sepolia "max fee < base fee" reverts and silent
-//     out-of-gas failures on heavy FHE operations).
-//   - Every encrypt/decrypt path streams progress through `useFHEStatus` for
-//     a consistent on-screen stepper.
-//   - Per-facility encrypted reads pass `account: address` because
-//     `getMyEmissions` uses `msg.sender` — without `account` the eth_call
-//     has `from = address(0)` and reverts.
-//   - CofheError codes mapped to friendly strings via `describeFheError`.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useAccount,
   usePublicClient,
@@ -47,7 +34,6 @@ import {
 import { useFHEStatus } from "./useFHEStatus";
 import { isInitializedCtHandle, parseCtHandle } from "@/lib/ct-handle";
 
-// Per-call gas limits tuned for Arbitrum Sepolia + CoFHE coprocessor.
 const GAS = {
   registerAsEmitter: 150_000n,
   submitEmissions: 800_000n,
@@ -62,14 +48,14 @@ const GAS = {
   settleCompliance: 600_000n,
 } as const;
 
-export function useCovertMrv() {
+export function useCovertMrv(reportingYear: number = new Date().getFullYear()) {
+  const yearBig = BigInt(reportingYear);
   const { address } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
   const { writeContractAsync } = useWriteContract();
   const fhe = useFHEStatus();
 
-  // ─── Reads ─────────────────────────────────────────────────────────
   const myRole = useReadContract({
     address: CAP_REGISTRY_ADDRESS,
     abi: CAP_REGISTRY_ABI,
@@ -88,14 +74,13 @@ export function useCovertMrv() {
     address: CAP_REGISTRY_ADDRESS,
     abi: CAP_REGISTRY_ABI,
     functionName: "getFacilityCount",
-    args: address ? [address] : undefined,
+    args: address ? [address, yearBig] : undefined,
     account: address,
     query: { enabled: !!address },
   });
 
   const [trackedFacilityIds, setTrackedFacilityIds] = useState<readonly bigint[]>([]);
 
-  // companyFacilities is private on-chain — track IDs locally and reconcile via isFacilitySubmitted.
   useEffect(() => {
     if (!address) {
       setTrackedFacilityIds([]);
@@ -121,7 +106,7 @@ export function useCovertMrv() {
             address: CAP_REGISTRY_ADDRESS,
             abi: CAP_REGISTRY_ABI,
             functionName: "isFacilitySubmitted",
-            args: [address, i],
+            args: [address, yearBig, i],
           });
           if (submitted) found.push(i);
         } catch {
@@ -137,13 +122,13 @@ export function useCovertMrv() {
     return () => {
       cancelled = true;
     };
-  }, [publicClient, address, facilityCountRead.data, trackedFacilityIds.length]);
+  }, [publicClient, address, facilityCountRead.data, trackedFacilityIds.length, yearBig]);
 
   const companyTotalHandle = useReadContract({
     address: CAP_REGISTRY_ADDRESS,
     abi: CAP_REGISTRY_ABI,
     functionName: "getCompanyTotal",
-    args: address ? [address] : undefined,
+    args: address ? [address, yearBig] : undefined,
     query: { enabled: !!address },
   });
 
@@ -151,7 +136,7 @@ export function useCovertMrv() {
     address: CAP_CHECK_ADDRESS,
     abi: CAP_CHECK_ABI,
     functionName: "getComplianceResult",
-    args: address ? [address] : undefined,
+    args: address ? [address, yearBig] : undefined,
     query: { enabled: !!address },
   });
 
@@ -159,16 +144,15 @@ export function useCovertMrv() {
     address: CAP_CHECK_ADDRESS,
     abi: CAP_CHECK_ABI,
     functionName: "complianceResults",
-    args: address ? [address] : undefined,
+    args: address ? [address, yearBig] : undefined,
     query: { enabled: !!address },
   });
 
-  // Whether the regulator has set an encrypted cap for this address.
   const regulatoryCapHandle = useReadContract({
     address: CAP_REGISTRY_ADDRESS,
     abi: CAP_REGISTRY_ABI,
     functionName: "getRegulatoryCap",
-    args: address ? [address] : undefined,
+    args: address ? [address, yearBig] : undefined,
     query: { enabled: !!address },
   });
 
@@ -176,7 +160,7 @@ export function useCovertMrv() {
     address: CAP_CHECK_ADDRESS,
     abi: CAP_CHECK_ABI,
     functionName: "isSettled",
-    args: address ? [address] : undefined,
+    args: address ? [address, yearBig] : undefined,
     query: { enabled: !!address },
   });
 
@@ -184,7 +168,7 @@ export function useCovertMrv() {
     address: CAP_CHECK_ADDRESS,
     abi: CAP_CHECK_ABI,
     functionName: "lastCheckedAt",
-    args: address ? [address] : undefined,
+    args: address ? [address, yearBig] : undefined,
     query: { enabled: !!address },
   });
 
@@ -211,8 +195,6 @@ export function useCovertMrv() {
     return { publicClient, walletClient, address };
   }
 
-  // ─── Writes ────────────────────────────────────────────────────────
-
   const registerAsEmitter = useCallback(async () => {
     const fees = await getGasFees(publicClient);
     return writeContractAsync({
@@ -225,7 +207,7 @@ export function useCovertMrv() {
   }, [publicClient, writeContractAsync]);
 
   const submitEmissions = useCallback(
-    async (facilityId: bigint, tonnes: bigint, reportingYear: number, scope: number = 0) => {
+    async (facilityId: bigint, tonnes: bigint, year: number, scope: number = 0) => {
       const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
@@ -243,7 +225,7 @@ export function useCovertMrv() {
           address: CAP_REGISTRY_ADDRESS,
           abi: CAP_REGISTRY_ABI,
           functionName: "submitEmissions",
-          args: [facilityId, encEmissions as never, encScope as never, BigInt(reportingYear)],
+          args: [facilityId, encEmissions as never, encScope as never, BigInt(year)],
           gas: GAS.submitEmissions,
           ...fees,
         });
@@ -263,7 +245,7 @@ export function useCovertMrv() {
   );
 
   const batchSubmitEmissions = useCallback(
-    async (facilityIds_: bigint[], tonnesArr: bigint[], reportingYear: number, scope: number = 0) => {
+    async (facilityIds_: bigint[], tonnesArr: bigint[], year: number, scope: number = 0) => {
       const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
@@ -282,7 +264,7 @@ export function useCovertMrv() {
           address: CAP_REGISTRY_ADDRESS,
           abi: CAP_REGISTRY_ABI,
           functionName: "batchSubmitEmissions",
-          args: [facilityIds_, encEmissions as never, encScopes as never, BigInt(reportingYear)],
+          args: [facilityIds_, encEmissions as never, encScopes as never, BigInt(year)],
           gas: GAS.batchSubmitEmissions,
           ...fees,
         });
@@ -302,7 +284,7 @@ export function useCovertMrv() {
   );
 
   const aggregateTotal = useCallback(
-    async (company: `0x${string}`) => {
+    async (company: `0x${string}`, year: number = reportingYear) => {
       const { publicClient: pc } = ensureClients();
       const facilityCount = BigInt(
         Number(facilityCountRead.data ?? 0n) || trackedFacilityIds.length || 1,
@@ -313,17 +295,24 @@ export function useCovertMrv() {
         address: CAP_REGISTRY_ADDRESS,
         abi: CAP_REGISTRY_ABI,
         functionName: "aggregateTotal",
-        args: [company],
+        args: [company, BigInt(year)],
         gas,
         ...fees,
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [publicClient, walletClient, writeContractAsync, facilityCountRead.data, trackedFacilityIds.length],
+    [
+      publicClient,
+      walletClient,
+      writeContractAsync,
+      facilityCountRead.data,
+      trackedFacilityIds.length,
+      reportingYear,
+    ],
   );
 
   const setCap = useCallback(
-    async (company: `0x${string}`, tonnes: bigint) => {
+    async (company: `0x${string}`, tonnes: bigint, year: number = reportingYear) => {
       const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
@@ -334,7 +323,7 @@ export function useCovertMrv() {
           address: CAP_REGISTRY_ADDRESS,
           abi: CAP_REGISTRY_ABI,
           functionName: "setCap",
-          args: [company, encrypted as never],
+          args: [company, BigInt(year), encrypted as never],
           gas: GAS.setCap,
           ...fees,
         });
@@ -346,37 +335,37 @@ export function useCovertMrv() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [publicClient, walletClient, writeContractAsync],
+    [publicClient, walletClient, writeContractAsync, reportingYear],
   );
 
   const grantCheckAccess = useCallback(
-    async (company: `0x${string}`) => {
+    async (company: `0x${string}`, year: number = reportingYear) => {
       const fees = await getGasFees(publicClient);
       return writeContractAsync({
         address: CAP_REGISTRY_ADDRESS,
         abi: CAP_REGISTRY_ABI,
         functionName: "grantCheckAccess",
-        args: [company, CAP_CHECK_ADDRESS],
+        args: [company, BigInt(year), CAP_CHECK_ADDRESS],
         gas: GAS.grantCheckAccess,
         ...fees,
       });
     },
-    [publicClient, writeContractAsync],
+    [publicClient, writeContractAsync, reportingYear],
   );
 
   const grantAuditAccess = useCallback(
-    async (auditor: `0x${string}`, durationSeconds: bigint) => {
+    async (auditor: `0x${string}`, durationSeconds: bigint, year: number = reportingYear) => {
       const fees = await getGasFees(publicClient);
       return writeContractAsync({
         address: CAP_REGISTRY_ADDRESS,
         abi: CAP_REGISTRY_ABI,
         functionName: "grantAuditAccessToTotal",
-        args: [auditor, durationSeconds],
+        args: [auditor, BigInt(year), durationSeconds],
         gas: GAS.grantAuditAccess,
         ...fees,
       });
     },
-    [publicClient, writeContractAsync],
+    [publicClient, writeContractAsync, reportingYear],
   );
 
   const revokeAuditAccess = useCallback(
@@ -408,13 +397,13 @@ export function useCovertMrv() {
   );
 
   const checkCompliance = useCallback(
-    async (company: `0x${string}`, reportingYear: number) => {
+    async (company: `0x${string}`, year: number) => {
       const fees = await getGasFees(publicClient);
       return writeContractAsync({
         address: CAP_CHECK_ADDRESS,
         abi: CAP_CHECK_ABI,
         functionName: "checkCompliance",
-        args: [company, BigInt(reportingYear)],
+        args: [company, BigInt(year)],
         gas: GAS.checkCompliance,
         ...fees,
       });
@@ -423,11 +412,23 @@ export function useCovertMrv() {
   );
 
   const settleCompliance = useCallback(
-    async (company: `0x${string}`) => {
+    async (company: `0x${string}`, year: number = reportingYear) => {
       const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
-      const handle = parseCtHandle(complianceHandle.data);
-      if (!isInitializedCtHandle(handle))
-        throw new Error("No compliance result yet — run a check first.");
+      if (!owner.data || (owner.data as string).toLowerCase() !== acct.toLowerCase()) {
+        throw new Error("Regulator settlement requires the contract owner wallet.");
+      }
+      const rawHandle = await pc.readContract({
+        address: CAP_CHECK_ADDRESS,
+        abi: CAP_CHECK_ABI,
+        functionName: "getComplianceResult",
+        args: [company, BigInt(year)],
+      });
+      const handle = parseCtHandle(rawHandle);
+      if (!isInitializedCtHandle(handle)) {
+        throw new Error(
+          `No compliance result for ${company} in ${year} — run checkCompliance first.`,
+        );
+      }
       try {
         fhe.setStep("ENCRYPTING");
         const { decryptedValue, signature } = await decryptForSettlement(
@@ -443,7 +444,7 @@ export function useCovertMrv() {
           address: CAP_CHECK_ADDRESS,
           abi: CAP_CHECK_ABI,
           functionName: "settleCompliance",
-          args: [company, decryptedValue as boolean, signature],
+          args: [company, BigInt(year), decryptedValue as boolean, signature],
           gas: GAS.settleCompliance,
           ...fees,
         });
@@ -455,10 +456,45 @@ export function useCovertMrv() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [publicClient, walletClient, writeContractAsync, complianceHandle.data],
+    [publicClient, walletClient, writeContractAsync, owner.data, reportingYear],
   );
 
-  // ─── Decrypt helpers ───────────────────────────────────────────────
+  const readCompanyPeriod = useCallback(
+    async (company: `0x${string}`, year: number) => {
+      if (!publicClient) throw new Error("No public client");
+      const y = BigInt(year);
+      const [total, cap, compliance] = await Promise.all([
+        publicClient.readContract({
+          address: CAP_REGISTRY_ADDRESS,
+          abi: CAP_REGISTRY_ABI,
+          functionName: "getCompanyTotal",
+          args: [company, y],
+        }),
+        publicClient.readContract({
+          address: CAP_REGISTRY_ADDRESS,
+          abi: CAP_REGISTRY_ABI,
+          functionName: "getRegulatoryCap",
+          args: [company, y],
+        }),
+        publicClient.readContract({
+          address: CAP_CHECK_ADDRESS,
+          abi: CAP_CHECK_ABI,
+          functionName: "complianceResults",
+          args: [company, y],
+        }),
+      ]);
+      return {
+        totalHandle: parseCtHandle(total),
+        capHandle: parseCtHandle(cap),
+        compliance: compliance as {
+          exists: boolean;
+          settled: boolean;
+          encryptedResult: bigint;
+        },
+      };
+    },
+    [publicClient],
+  );
 
   const decryptHandleU64 = useCallback(
     async (handle: bigint): Promise<bigint> => {
@@ -494,13 +530,8 @@ export function useCovertMrv() {
     [publicClient, walletClient, address],
   );
 
-  /**
-   * Decrypt a single facility's encrypted emissions.
-   * `getMyEmissions` uses `msg.sender` — `account: address` is required, else
-   * the eth_call has `from = 0x0` and reverts.
-   */
   const decryptFacility = useCallback(
-    async (facilityId: bigint): Promise<bigint> => {
+    async (facilityId: bigint, year: number = reportingYear): Promise<bigint> => {
       const { publicClient: pc, walletClient: wc } = ensureClients();
       if (!address) throw new Error("Wallet not connected");
       try {
@@ -510,7 +541,7 @@ export function useCovertMrv() {
           address: CAP_REGISTRY_ADDRESS,
           abi: CAP_REGISTRY_ABI,
           functionName: "getMyEmissions",
-          args: [facilityId],
+          args: [facilityId, BigInt(year)],
           account: address,
         })) as unknown as bigint;
         if (!handle) throw new Error("Facility has no encrypted handle yet.");
@@ -523,7 +554,7 @@ export function useCovertMrv() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [publicClient, walletClient, address],
+    [publicClient, walletClient, address, reportingYear],
   );
 
   const refetchAll = useCallback(() => {
@@ -551,7 +582,7 @@ export function useCovertMrv() {
   ]);
 
   return {
-    // state
+    reportingYear,
     address,
     fheReady: !!walletClient && !!publicClient,
     isOwner:
@@ -579,16 +610,13 @@ export function useCovertMrv() {
     auditGrantExpiry: 0n,
     auditGrantActive: false,
     certificateBalance: (certificateBalance.data ?? 0n) as bigint,
-    // FHE step state
     fheStep: fhe.step,
     fheStepLabel: fhe.stepLabel,
     fheStepIndex: fhe.stepIndex,
     fheError: fhe.errorMessage,
     fheWorking: fhe.isWorking,
     resetFheStatus: fhe.reset,
-    // refetchers
     refetch: refetchAll,
-    // actions
     registerAsEmitter,
     submitEmissions,
     batchSubmitEmissions,
@@ -600,7 +628,7 @@ export function useCovertMrv() {
     checkAuditActive,
     checkCompliance,
     settleCompliance,
-    // decrypts
+    readCompanyPeriod,
     decryptUint64: decryptHandleU64,
     decryptBool: decryptHandleBool,
     decryptFacility,

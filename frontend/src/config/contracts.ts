@@ -16,42 +16,42 @@ function viteAddress(envKey: string, fallback: `0x${string}`): `0x${string}` {
 
 export const CAP_REGISTRY_ADDRESS = viteAddress(
   "VITE_CAP_REGISTRY_ADDRESS",
-  "0xbc3dc391AfbE94BF55cedDF5Aa05dA8e5e73dD41",
+  "0x10e76b22Cc21B606c6d6aD9B1C4b0192e8168147" as `0x${string}`,
 );
 
 export const CAP_CHECK_ADDRESS = viteAddress(
   "VITE_CAP_CHECK_ADDRESS",
-  "0x2d692212B3bA5c46a1e97d320eA198EaB65C846B",
+  "0xAB5B0f9249AaB16dCe45bc45e24Ece6d2B14d189" as `0x${string}`,
 );
 
 export const COMPLIANCE_CERTIFICATE_ADDRESS = viteAddress(
   "VITE_COMPLIANCE_CERTIFICATE_ADDRESS",
-  "0xe7A84b47fF5DE41F0C112256b659B14A33fab66e",
+  "0xfC00455c683AFCC57FF47cbF38C3480222e7f437" as `0x${string}`,
 );
 
 export const SUPPLIER_ATTEST_ADDRESS = viteAddress(
   "VITE_SUPPLIER_ATTEST_ADDRESS",
-  "0xBF5246DECC3C18F8c9A1B310DDF6CeeA0104980D",
+  "0x7B514F53ACcC6757e6BeB361A75F9f0A31552612" as `0x${string}`,
 );
 
 export const PRODUCT_FOOTPRINT_ADDRESS = viteAddress(
   "VITE_PRODUCT_FOOTPRINT_ADDRESS",
-  "0x7B15F60d8252038281818e138426c834428f9152",
+  "0x8042463634B04bd9B39A2854ba614B9A05452c67" as `0x${string}`,
 );
 
 export const CCO2_ADDRESS = viteAddress(
   "VITE_CCO2_ADDRESS",
-  "0x794ebf1C753FA7DA424624B338cFE07697195670",
+  "0xa9bA06359DDf073a226652F10f13863Af824cAd1" as `0x${string}`,
 );
 
 export const CREDIT_ISSUER_ADDRESS = viteAddress(
   "VITE_CREDIT_ISSUER_ADDRESS",
-  "0xcb2a38D5Ac1c06345450b1564558da468e703Efb",
+  "0x83E5d71D7661D024C1E06E0c3C71b1e84Ce86664" as `0x${string}`,
 );
 
 export const CREDIT_RETIRE_ADDRESS = viteAddress(
   "VITE_CREDIT_RETIRE_ADDRESS",
-  "0x22930E042B2BE81eC4fcfe9C4e927533D44c9Aab",
+  "0x5f280cFc9055f2f22C4E3f9115Cd86fAa0544320" as `0x${string}`,
 );
 
 export const CAP_REGISTRY_ABI = [
@@ -139,6 +139,12 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "address",
         "name": "company",
         "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "reportingYear",
+        "type": "uint256"
       }
     ],
     "name": "CapSet",
@@ -157,6 +163,12 @@ export const CAP_REGISTRY_ABI = [
         "indexed": true,
         "internalType": "uint256",
         "name": "facilityId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "reportingYear",
         "type": "uint256"
       },
       {
@@ -211,6 +223,12 @@ export const CAP_REGISTRY_ABI = [
         "type": "address"
       },
       {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "reportingYear",
+        "type": "uint256"
+      },
+      {
         "indexed": false,
         "internalType": "uint256",
         "name": "facilityCount",
@@ -226,6 +244,11 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "address",
         "name": "_company",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       }
     ],
     "name": "aggregateTotal",
@@ -324,6 +347,11 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "address",
         "name": "_company",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       }
     ],
     "name": "getCompanyTotal",
@@ -343,6 +371,11 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "address",
         "name": "_company",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       }
     ],
     "name": "getEncryptedFacilityCount",
@@ -362,6 +395,11 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "address",
         "name": "_company",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       }
     ],
     "name": "getFacilityCount",
@@ -381,6 +419,11 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "address",
         "name": "_company",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       },
       {
         "internalType": "uint256",
@@ -408,6 +451,11 @@ export const CAP_REGISTRY_ABI = [
       },
       {
         "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
         "name": "_facilityId",
         "type": "uint256"
       }
@@ -429,6 +477,11 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "uint256",
         "name": "_facilityId",
         "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       }
     ],
     "name": "getMyEmissions",
@@ -448,6 +501,11 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "address",
         "name": "_company",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       }
     ],
     "name": "getRegulatoryCap",
@@ -470,6 +528,11 @@ export const CAP_REGISTRY_ABI = [
       },
       {
         "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
         "name": "_durationSeconds",
         "type": "uint256"
       }
@@ -487,6 +550,11 @@ export const CAP_REGISTRY_ABI = [
         "type": "address"
       },
       {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
+      },
+      {
         "internalType": "address",
         "name": "_checker",
         "type": "address"
@@ -502,6 +570,11 @@ export const CAP_REGISTRY_ABI = [
       {
         "internalType": "uint256",
         "name": "_facilityId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
         "type": "uint256"
       },
       {
@@ -563,6 +636,11 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "address",
         "name": "_company",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       },
       {
         "internalType": "uint256",
@@ -658,6 +736,11 @@ export const CAP_REGISTRY_ABI = [
         "internalType": "address",
         "name": "_company",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       },
       {
         "components": [
@@ -798,15 +881,15 @@ export const CAP_CHECK_ABI = [
         "type": "address"
       },
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "uint256",
-        "name": "timestamp",
+        "name": "reportingYear",
         "type": "uint256"
       },
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "reportingYear",
+        "name": "timestamp",
         "type": "uint256"
       }
     ],
@@ -821,6 +904,12 @@ export const CAP_CHECK_ABI = [
         "internalType": "address",
         "name": "company",
         "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "reportingYear",
+        "type": "uint256"
       },
       {
         "indexed": false,
@@ -875,6 +964,11 @@ export const CAP_CHECK_ABI = [
         "internalType": "address",
         "name": "",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "name": "complianceResults",
@@ -887,11 +981,6 @@ export const CAP_CHECK_ABI = [
       {
         "internalType": "uint256",
         "name": "timestamp",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "reportingYear",
         "type": "uint256"
       },
       {
@@ -932,6 +1021,11 @@ export const CAP_CHECK_ABI = [
         "internalType": "address",
         "name": "_company",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       }
     ],
     "name": "getComplianceResult",
@@ -951,6 +1045,11 @@ export const CAP_CHECK_ABI = [
         "internalType": "address",
         "name": "_company",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       }
     ],
     "name": "isSettled",
@@ -975,6 +1074,11 @@ export const CAP_CHECK_ABI = [
         "internalType": "address",
         "name": "_company",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       }
     ],
     "name": "lastCheckedAt",
@@ -1046,6 +1150,11 @@ export const CAP_CHECK_ABI = [
         "internalType": "address",
         "name": "_company",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_reportingYear",
+        "type": "uint256"
       },
       {
         "internalType": "bool",
@@ -2065,6 +2174,25 @@ export const PRODUCT_FOOTPRINT_ABI = [
         "internalType": "bytes32",
         "name": "sku",
         "type": "bytes32"
+      }
+    ],
+    "name": "BandClassified",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "requester",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "sku",
+        "type": "bytes32"
       },
       {
         "indexed": false,
@@ -2093,6 +2221,25 @@ export const PRODUCT_FOOTPRINT_ABI = [
       }
     ],
     "name": "RoleGranted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "requester",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "sku",
+        "type": "bytes32"
+      }
+    ],
+    "name": "ThresholdChecked",
     "type": "event"
   },
   {
@@ -2218,6 +2365,78 @@ export const PRODUCT_FOOTPRINT_ABI = [
       }
     ],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_requester",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_sku",
+        "type": "bytes32"
+      }
+    ],
+    "name": "getBandResult",
+    "outputs": [
+      {
+        "internalType": "euint8",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_requester",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_sku",
+        "type": "bytes32"
+      }
+    ],
+    "name": "getFootprintResult",
+    "outputs": [
+      {
+        "internalType": "euint64",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_requester",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_sku",
+        "type": "bytes32"
+      }
+    ],
+    "name": "getThresholdResult",
+    "outputs": [
+      {
+        "internalType": "ebool",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -3500,6 +3719,30 @@ export const CREDIT_ISSUER_ABI = [
         "internalType": "contract ICcCO2",
         "name": "",
         "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "creditsIssued",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
       }
     ],
     "stateMutability": "view",

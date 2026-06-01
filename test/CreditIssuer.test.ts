@@ -73,11 +73,11 @@ describe("CreditIssuer", function () {
       .encryptInputs([Encryptable.uint64(emissions), Encryptable.uint8(1n)])
       .execute();
     await registry.connect(company).submitEmissions(1, encEmissions, encScope, YEAR);
-    await registry.aggregateTotal(company.address);
+    await registry.aggregateTotal(company.address, YEAR);
 
     const [encCap] = await ownerClient.encryptInputs([Encryptable.uint64(cap)]).execute();
-    await registry.connect(owner).setCap(company.address, encCap);
-    await registry.connect(owner).grantCheckAccess(company.address, await check.getAddress());
+    await registry.connect(owner).setCap(company.address, YEAR, encCap);
+    await registry.connect(owner).grantCheckAccess(company.address, YEAR, await check.getAddress());
 
     await check.checkCompliance(company.address, YEAR);
   }
@@ -117,6 +117,38 @@ describe("CreditIssuer", function () {
     await expect(
       creditIssuer.issueCredits(other.address, YEAR)
     ).to.be.revertedWith("No compliance check for company");
+  });
+
+  it("issueCredits: second issuance for same year reverts", async function () {
+    const fx = await loadFixture(deployFixture);
+    const { creditIssuer, company } = fx;
+    await setupAndCheck(fx, 1000n, 5000n);
+    await creditIssuer.issueCredits(company.address, YEAR);
+    await expect(
+      creditIssuer.issueCredits(company.address, YEAR)
+    ).to.be.revertedWith("Credits already issued");
+  });
+
+  it("issueCredits: different year can issue independently", async function () {
+    const fx = await loadFixture(deployFixture);
+    const { registry, check, creditIssuer, owner, company, ownerClient, companyClient } = fx;
+    await setupAndCheck(fx, 1000n, 5000n);
+    await creditIssuer.issueCredits(company.address, YEAR);
+
+    const YEAR2 = 2026;
+    const [encE, encScope] = await companyClient
+      .encryptInputs([Encryptable.uint64(500n), Encryptable.uint8(1n)])
+      .execute();
+    await registry.connect(company).submitEmissions(2, encE, encScope, YEAR2);
+    await registry.aggregateTotal(company.address, YEAR2);
+    const [encCap] = await ownerClient.encryptInputs([Encryptable.uint64(5000n)]).execute();
+    await registry.connect(owner).setCap(company.address, YEAR2, encCap);
+    await registry.connect(owner).grantCheckAccess(company.address, YEAR2, await check.getAddress());
+    await check.checkCompliance(company.address, YEAR2);
+
+    await expect(
+      creditIssuer.issueCredits(company.address, YEAR2)
+    ).to.emit(creditIssuer, "CreditsIssued");
   });
 
   it("setIssuanceRate: owner can update rate; non-owner reverts", async function () {

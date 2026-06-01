@@ -16,3 +16,7 @@ frontend/.vercel
 # Documentation — README.md only in public repo
 *.md
 !README.md
+ARCHITECTURE_DECISION_REPORT.md
+PRODUCTION_FIX_PLAN.md
+FINAL_PRODUCTION_VERIFICATION.md
+PRODUCTION_BLOCKERS.md

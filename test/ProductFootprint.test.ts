@@ -78,6 +78,9 @@ describe("ProductFootprint", function () {
     // Non-static call to actually emit and store
     await productFootprint.connect(manufacturer).computeFootprint(SKU, [supplier1.address]);
 
+    const stored = await productFootprint.getFootprintResult(manufacturer.address, SKU);
+    expect(stored).to.not.equal(hre.ethers.ZeroHash);
+
     // Manufacturer was granted FHE.allow — can decrypt
     const decrypted = await manufacturerClient.decryptForView(handle, FheTypes.Uint64).execute();
     expect(decrypted).to.equal(80n);

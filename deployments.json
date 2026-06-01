@@ -2,14 +2,14 @@
   "arb-sepolia": {
     "chainId": 421614,
     "deployer": "0x2301CD93feC8249219b4b661b4bc81889b494De6",
-    "capRegistry": "0xbc3dc391AfbE94BF55cedDF5Aa05dA8e5e73dD41",
-    "capCheck": "0x2d692212B3bA5c46a1e97d320eA198EaB65C846B",
-    "complianceCertificate": "0xe7A84b47fF5DE41F0C112256b659B14A33fab66e",
-    "supplierAttest": "0xBF5246DECC3C18F8c9A1B310DDF6CeeA0104980D",
-    "productFootprint": "0x7B15F60d8252038281818e138426c834428f9152",
-    "cco2": "0x794ebf1C753FA7DA424624B338cFE07697195670",
-    "creditIssuer": "0xcb2a38D5Ac1c06345450b1564558da468e703Efb",
-    "creditRetire": "0x22930E042B2BE81eC4fcfe9C4e927533D44c9Aab",
-    "timestamp": "2026-06-02T09:56:27.602Z"
+    "capRegistry": "0x10e76b22Cc21B606c6d6aD9B1C4b0192e8168147",
+    "capCheck": "0xAB5B0f9249AaB16dCe45bc45e24Ece6d2B14d189",
+    "complianceCertificate": "0xfC00455c683AFCC57FF47cbF38C3480222e7f437",
+    "supplierAttest": "0x7B514F53ACcC6757e6BeB361A75F9f0A31552612",
+    "productFootprint": "0x8042463634B04bd9B39A2854ba614B9A05452c67",
+    "cco2": "0xa9bA06359DDf073a226652F10f13863Af824cAd1",
+    "creditIssuer": "0x83E5d71D7661D024C1E06E0c3C71b1e84Ce86664",
+    "creditRetire": "0x5f280cFc9055f2f22C4E3f9115Cd86fAa0544320",
+    "timestamp": "2026-06-03T16:32:15.902Z"
   }
 }

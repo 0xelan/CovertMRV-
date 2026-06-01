@@ -112,37 +112,56 @@ task(
 
 export const CHAIN_ID = ${chainId};
 
-export const CAP_REGISTRY_ADDRESS =
-  (import.meta.env.VITE_CAP_REGISTRY_ADDRESS as \`0x\${string}\` | undefined) ??
-  ("${registryAddress}" as \`0x\${string}\`);
+const ADDR = /^0x[a-fA-F0-9]{40}$/;
 
-export const CAP_CHECK_ADDRESS =
-  (import.meta.env.VITE_CAP_CHECK_ADDRESS as \`0x\${string}\` | undefined) ??
-  ("${checkAddress}" as \`0x\${string}\`);
+/** Vercel often sets VITE_* to "" — empty string must fall back to baked-in deploy addresses. */
+function viteAddress(envKey: string, fallback: \`0x\${string}\`): \`0x\${string}\` {
+  const raw = import.meta.env[envKey] as string | undefined;
+  if (typeof raw === "string" && ADDR.test(raw.trim())) {
+    return raw.trim() as \`0x\${string}\`;
+  }
+  return fallback;
+}
 
-export const COMPLIANCE_CERTIFICATE_ADDRESS =
-  (import.meta.env.VITE_COMPLIANCE_CERTIFICATE_ADDRESS as \`0x\${string}\` | undefined) ??
-  ("${certAddress}" as \`0x\${string}\`);
+export const CAP_REGISTRY_ADDRESS = viteAddress(
+  "VITE_CAP_REGISTRY_ADDRESS",
+  "${registryAddress}" as \`0x\${string}\`,
+);
 
-export const SUPPLIER_ATTEST_ADDRESS =
-  (import.meta.env.VITE_SUPPLIER_ATTEST_ADDRESS as \`0x\${string}\` | undefined) ??
-  ("${supplierAttestAddress}" as \`0x\${string}\`);
+export const CAP_CHECK_ADDRESS = viteAddress(
+  "VITE_CAP_CHECK_ADDRESS",
+  "${checkAddress}" as \`0x\${string}\`,
+);
 
-export const PRODUCT_FOOTPRINT_ADDRESS =
-  (import.meta.env.VITE_PRODUCT_FOOTPRINT_ADDRESS as \`0x\${string}\` | undefined) ??
-  ("${productFootprintAddress}" as \`0x\${string}\`);
+export const COMPLIANCE_CERTIFICATE_ADDRESS = viteAddress(
+  "VITE_COMPLIANCE_CERTIFICATE_ADDRESS",
+  "${certAddress}" as \`0x\${string}\`,
+);
 
-export const CCO2_ADDRESS =
-  (import.meta.env.VITE_CCO2_ADDRESS as \`0x\${string}\` | undefined) ??
-  ("${cco2Address}" as \`0x\${string}\`);
+export const SUPPLIER_ATTEST_ADDRESS = viteAddress(
+  "VITE_SUPPLIER_ATTEST_ADDRESS",
+  "${supplierAttestAddress}" as \`0x\${string}\`,
+);
 
-export const CREDIT_ISSUER_ADDRESS =
-  (import.meta.env.VITE_CREDIT_ISSUER_ADDRESS as \`0x\${string}\` | undefined) ??
-  ("${creditIssuerAddress}" as \`0x\${string}\`);
+export const PRODUCT_FOOTPRINT_ADDRESS = viteAddress(
+  "VITE_PRODUCT_FOOTPRINT_ADDRESS",
+  "${productFootprintAddress}" as \`0x\${string}\`,
+);
 
-export const CREDIT_RETIRE_ADDRESS =
-  (import.meta.env.VITE_CREDIT_RETIRE_ADDRESS as \`0x\${string}\` | undefined) ??
-  ("${creditRetireAddress}" as \`0x\${string}\`);
+export const CCO2_ADDRESS = viteAddress(
+  "VITE_CCO2_ADDRESS",
+  "${cco2Address}" as \`0x\${string}\`,
+);
+
+export const CREDIT_ISSUER_ADDRESS = viteAddress(
+  "VITE_CREDIT_ISSUER_ADDRESS",
+  "${creditIssuerAddress}" as \`0x\${string}\`,
+);
+
+export const CREDIT_RETIRE_ADDRESS = viteAddress(
+  "VITE_CREDIT_RETIRE_ADDRESS",
+  "${creditRetireAddress}" as \`0x\${string}\`,
+);
 
 export const CAP_REGISTRY_ABI = ${JSON.stringify(registryArtifact.abi, null, 2)} as const;
 export const CAP_CHECK_ABI = ${JSON.stringify(checkArtifact.abi, null, 2)} as const;

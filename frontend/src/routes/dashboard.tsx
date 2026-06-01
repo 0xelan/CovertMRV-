@@ -83,7 +83,8 @@ function Dashboard() {
   const navigate = useNavigate({ from: "/dashboard" });
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const ctx = useCovertMrv();
+  const [reportingYear, setReportingYear] = useState(new Date().getFullYear());
+  const ctx = useCovertMrv(reportingYear);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -166,10 +167,30 @@ function Dashboard() {
         <main className="min-h-screen overflow-x-hidden">
           <ChainGuard />
           {!isConnected && <DisconnectedBanner />}
-          {view === "overview" && <Overview ctx={ctx} />}
-          {view === "submit" && <SubmitEmissions ctx={ctx} />}
-          {view === "check" && <ComplianceCheck ctx={ctx} />}
-          {view === "audit" && <AuditAccess ctx={ctx} />}
+          {view === "overview" && (
+            <Overview ctx={ctx} reportingYear={reportingYear} setReportingYear={setReportingYear} />
+          )}
+          {view === "submit" && (
+            <SubmitEmissions
+              ctx={ctx}
+              reportingYear={reportingYear}
+              setReportingYear={setReportingYear}
+            />
+          )}
+          {view === "check" && (
+            <ComplianceCheck
+              ctx={ctx}
+              reportingYear={reportingYear}
+              setReportingYear={setReportingYear}
+            />
+          )}
+          {view === "audit" && (
+            <AuditAccess
+              ctx={ctx}
+              reportingYear={reportingYear}
+              setReportingYear={setReportingYear}
+            />
+          )}
           {view === "console" && <DisclosureConsole ctx={ctx} />}
           {view === "certificate" && <CertificateView ctx={ctx} />}
           {view === "supply-chain" && <SupplyChainView />}
@@ -496,7 +517,16 @@ function StatusPill({ kind, children }: { kind: "ok" | "warn" | "err" | "info"; 
 
 /* -------------------- Overview -------------------- */
 
-function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
+type YearProps = {
+  reportingYear: number;
+  setReportingYear: (y: number) => void;
+};
+
+function Overview({
+  ctx,
+  reportingYear,
+  setReportingYear,
+}: { ctx: ReturnType<typeof useCovertMrv> } & YearProps) {
   const facilityCount = ctx.facilityCount || ctx.facilityIds.length;
   const settledStatus = ctx.settled?.[0];
   const settledValue = ctx.settled?.[1];
@@ -506,8 +536,21 @@ function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
       <PageHeader
         index="00"
         title="Overview"
-        desc="Compliance posture for the current reporting period. All values remain encrypted on-chain; only authorized roles can decrypt."
+        desc={`Compliance posture for reporting year ${reportingYear}. All values remain encrypted on-chain; only authorized roles can decrypt.`}
       />
+      <div className="px-10 pb-2">
+        <label className="font-mono text-[11px] uppercase tracking-widest text-foreground/45">
+          Reporting year
+        </label>
+        <input
+          type="number"
+          min={2020}
+          max={2100}
+          value={reportingYear}
+          onChange={(e) => setReportingYear(Number(e.target.value) || reportingYear)}
+          className="mt-2 w-32 rounded-lg border border-foreground/15 bg-background px-3 py-2 font-mono text-sm outline-none focus:border-emerald"
+        />
+      </div>
       {ctx.role === 0 && <EmitterRegistrationCard ctx={ctx} />}
       <div className="grid gap-6 p-10 lg:grid-cols-3">
         <SpotlightCard className="rounded-2xl border border-foreground/10 bg-surface p-7 lg:col-span-2">
@@ -616,7 +659,7 @@ function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
         </SpotlightCard>
       </div>
 
-      {ctx.isOwner && <AdminPanel ctx={ctx} />}
+      {ctx.isOwner && <AdminPanel ctx={ctx} reportingYear={reportingYear} />}
 
       <div className="px-10 pb-10">
         <div className="flex items-center justify-between">
@@ -659,9 +702,16 @@ function ContractCard({ label, address }: { label: string; address: string }) {
   );
 }
 
-function AdminPanel({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
+function AdminPanel({
+  ctx,
+  reportingYear,
+}: {
+  ctx: ReturnType<typeof useCovertMrv>;
+  reportingYear: number;
+}) {
   const [target, setTarget] = useState("");
   const [cap, setCap] = useState("");
+  const [adminYear, setAdminYear] = useState(String(reportingYear));
   const [pending, setPending] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
 
@@ -669,10 +719,12 @@ function AdminPanel({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     e.preventDefault();
     if (!isAddress(target)) return setMsg({ tone: "err", text: "Invalid address" });
     if (!cap) return;
+    const year = Number(adminYear);
+    if (!year) return setMsg({ tone: "err", text: "Invalid reporting year" });
     try {
       setPending("cap");
       setMsg(null);
-      const hash = await ctx.setCap(target as `0x${string}`, BigInt(cap));
+      const hash = await ctx.setCap(target as `0x${string}`, BigInt(cap), year);
       setMsg({ tone: "ok", text: `Cap submitted: ${shortHandle(hash)}` });
     } catch (e) {
       setMsg({ tone: "err", text: (e as Error).message });
@@ -683,10 +735,12 @@ function AdminPanel({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
 
   async function doGrantCheck() {
     if (!isAddress(target)) return setMsg({ tone: "err", text: "Invalid address" });
+    const year = Number(adminYear);
+    if (!year) return setMsg({ tone: "err", text: "Invalid reporting year" });
     try {
       setPending("grant");
       setMsg(null);
-      const hash = await ctx.grantCheckAccess(target as `0x${string}`);
+      const hash = await ctx.grantCheckAccess(target as `0x${string}`, year);
       setMsg({ tone: "ok", text: `Granted CapCheck access: ${shortHandle(hash)}` });
     } catch (e) {
       setMsg({ tone: "err", text: (e as Error).message });
@@ -697,10 +751,12 @@ function AdminPanel({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
 
   async function doSettle() {
     if (!isAddress(target)) return setMsg({ tone: "err", text: "Invalid address" });
+    const year = Number(adminYear);
+    if (!year) return setMsg({ tone: "err", text: "Invalid reporting year" });
     try {
       setPending("settle");
       setMsg(null);
-      const hash = await ctx.settleCompliance(target as `0x${string}`);
+      const hash = await ctx.settleCompliance(target as `0x${string}`, year);
       setMsg({ tone: "ok", text: `Settlement broadcast: ${shortHandle(hash)}` });
     } catch (e) {
       setMsg({ tone: "err", text: (e as Error).message });
@@ -718,11 +774,18 @@ function AdminPanel({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             Regulator / Admin controls
           </p>
         </div>
-        <form onSubmit={doSetCap} className="mt-5 grid gap-4 md:grid-cols-[1.6fr_1fr_auto]">
+        <form onSubmit={doSetCap} className="mt-5 grid gap-4 md:grid-cols-[1.2fr_0.7fr_1fr_auto]">
           <input
             value={target}
             onChange={(e) => setTarget(e.target.value)}
             placeholder="Company address (0x…)"
+            className="rounded-lg border border-foreground/15 bg-background px-4 py-2.5 font-mono text-[12.5px] outline-none focus:border-emerald"
+          />
+          <input
+            value={adminYear}
+            onChange={(e) => setAdminYear(e.target.value)}
+            type="number"
+            placeholder="Year"
             className="rounded-lg border border-foreground/15 bg-background px-4 py-2.5 font-mono text-[12.5px] outline-none focus:border-emerald"
           />
           <input
@@ -766,9 +829,12 @@ function AdminPanel({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
           </p>
         )}
         <p className="mt-4 text-[12px] leading-relaxed text-foreground/55">
-          Owners can encrypt new caps, grant the CapCheck contract access to a
-          company's aggregate (run once after every aggregateTotal), and decrypt
-          + publish a compliance result on-chain so the public can verify.
+          Regulator cap and grant are scoped to the reporting year. Run{" "}
+          <code className="rounded bg-foreground/10 px-1 font-mono text-[11px]">
+            aggregateTotal(company, year)
+          </code>{" "}
+          for that year before grant. Settlement decrypts the target company&apos;s
+          compliance handle for the selected year (owner wallet required).
         </p>
       </div>
     </div>
@@ -784,10 +850,14 @@ const SUBMIT_STEPS = [
   "Emissions recorded · ciphertext handle created.",
 ];
 
-function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
+function SubmitEmissions({
+  ctx,
+  reportingYear,
+  setReportingYear,
+}: { ctx: ReturnType<typeof useCovertMrv> } & YearProps) {
   const [facility, setFacility] = useState("");
   const [emissions, setEmissions] = useState("");
-  const [reportingYear, setReportingYear] = useState(String(new Date().getFullYear()));
+  const reportingYearStr = String(reportingYear);
   const [scope, setScope] = useState<0 | 1 | 2>(0);
   const [step, setStep] = useState(0);
   const [hash, setHash] = useState<`0x${string}` | undefined>();
@@ -840,7 +910,7 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     setStep(1);
     try {
       if (!ctx.fheReady) throw new Error("FHE client not ready — wait a moment then retry");
-      const h = await ctx.submitEmissions(BigInt(facility), BigInt(emissions), Number(reportingYear), scope);
+      const h = await ctx.submitEmissions(BigInt(facility), BigInt(emissions), reportingYear, scope);
       setHash(h);
     } catch (e) {
       setError((e as Error).message);
@@ -856,7 +926,7 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     setError(null);
     setAggregatePrompt(false);
     try {
-      const h = await ctx.aggregateTotal(ctx.address as `0x${string}`);
+      const h = await ctx.aggregateTotal(ctx.address as `0x${string}`, reportingYear);
       setAggHash(h);
     } catch (e) {
       setError((e as Error).message);
@@ -876,7 +946,7 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
       if (!ctx.fheReady) throw new Error("FHE client not ready — wait a moment then retry");
       const fids = validRows.map((r) => BigInt(r.facilityId));
       const amounts = validRows.map((r) => BigInt(r.tonnes));
-      const h = await ctx.batchSubmitEmissions(fids, amounts, Number(reportingYear), scope);
+      const h = await ctx.batchSubmitEmissions(fids, amounts, reportingYear, scope);
       setBatchHash(h);
     } catch (e) {
       setBatchError((e as Error).message);
@@ -918,8 +988,8 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
                 required
                 min={2020}
                 max={2100}
-                value={reportingYear}
-                onChange={(e) => setReportingYear(e.target.value)}
+                value={reportingYearStr}
+                onChange={(e) => setReportingYear(Number(e.target.value) || reportingYear)}
                 placeholder="e.g. 2025"
                 className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-emerald"
               />
@@ -1228,7 +1298,11 @@ const CHECK_STEPS = [
   "Result available · decrypt to view in your tab.",
 ];
 
-function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
+function ComplianceCheck({
+  ctx,
+  reportingYear,
+  setReportingYear,
+}: { ctx: ReturnType<typeof useCovertMrv> } & YearProps) {
   const publicClient = usePublicClient();
   const [step, setStep] = useState(0);
   const [hash, setHash] = useState<`0x${string}` | undefined>();
@@ -1236,7 +1310,6 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const [decrypting, setDecrypting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aggregating, setAggregating] = useState(false);
-  const [reportingYear, setReportingYear] = useState(String(new Date().getFullYear()));
   const tx = useWaitForTransactionReceipt({ hash });
   const handledCheckSuccess = useRef(false);
   const aggregateInFlight = useRef(false);
@@ -1279,7 +1352,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
         min={2020}
         max={2100}
         value={reportingYear}
-        onChange={(e) => setReportingYear(e.target.value)}
+        onChange={(e) => setReportingYear(Number(e.target.value) || reportingYear)}
         className="w-28 rounded-lg border border-foreground/15 bg-background px-3 py-2 font-mono text-sm outline-none focus:border-emerald"
       />
     </div>
@@ -1291,7 +1364,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     setError(null);
     setAggregating(true);
     try {
-      const h = await ctx.aggregateTotal(ctx.address as `0x${string}`);
+      const h = await ctx.aggregateTotal(ctx.address as `0x${string}`, reportingYear);
       if (publicClient) {
         await publicClient.waitForTransactionReceipt({ hash: h });
       }
@@ -1312,7 +1385,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     handledCheckSuccess.current = false;
     setStep(1);
     try {
-      const h = await ctx.checkCompliance(ctx.address as `0x${string}`, Number(reportingYear));
+      const h = await ctx.checkCompliance(ctx.address as `0x${string}`, reportingYear);
       setHash(h);
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
@@ -1320,7 +1393,9 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
       if (msg.includes("No emissions total") || msg.includes("isInitialized")) {
         setError("No aggregated total on-chain. Click \"Aggregate\" below first.");
       } else if (msg.includes("No regulatory cap")) {
-        setError("No regulatory cap set for your address. The admin must call setCap + grantCheckAccess first.");
+        setError(
+          `Regulator cap required for reporting year ${reportingYear}. Admin must setCap + grantCheckAccess for that year.`,
+        );
       } else {
         setError(msg);
       }
@@ -1600,7 +1675,10 @@ type Grant = {
   active: boolean;
 };
 
-function AuditAccess({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
+function AuditAccess({
+  ctx,
+  reportingYear,
+}: { ctx: ReturnType<typeof useCovertMrv> } & YearProps) {
   const publicClient = usePublicClient();
   const [addr, setAddr] = useState("");
   const [hrs, setHrs] = useState("48");
@@ -1661,7 +1739,7 @@ function AuditAccess({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     const seconds = BigInt(Math.max(1, Math.floor(Number(hrs) * 3600)));
     try {
       setPending(true);
-      const hash = await ctx.grantAuditAccess(addr as `0x${string}`, seconds);
+      const hash = await ctx.grantAuditAccess(addr as `0x${string}`, seconds, reportingYear);
       if (publicClient) {
         await publicClient.waitForTransactionReceipt({ hash });
       }
@@ -1696,7 +1774,7 @@ function AuditAccess({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
       <PageHeader
         index="03"
         title="Audit Access"
-        desc="Issue time-bounded decrypt access to your aggregate emissions total. Auditors can verify quality. Access expires automatically — no manual revocation required."
+        desc={`Grant auditors decrypt access to your ${reportingYear} aggregate total. Application UI tracks expiry; CoFHE FHE.allow grants remain on-chain until handles rotate.`}
       />
       <AuditTimer grants={grants} now={now} />
       <div className="grid gap-6 p-10 lg:grid-cols-[1fr_1.4fr]">
@@ -1730,7 +1808,9 @@ function AuditAccess({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             <p className="text-[13px] leading-relaxed text-foreground/65">
               Your aggregate total handle is granted to the auditor. The auditor
               must hold an active grant <em>and</em> a CoFHE permit signed by you
-              to decrypt it. Once the expiry passes the chain rejects further
+              to decrypt it. UI expiry is application-level; CoFHE{" "}
+              <code className="font-mono text-[10px]">FHE.allow</code> grants persist until
+              handles are rotated. Revoke here to mark the grant inactive in-app.
               decryption requests.
             </p>
           </div>
@@ -2438,7 +2518,12 @@ function CarbonCreditsView() {
                 setMsg({ tone: "ok", text: `Credits issued: ${shortHandle(h)}` });
                 credits.refetchBalance();
               } catch (e) {
-                setMsg({ tone: "err", text: (e as Error).message });
+                const m = (e as Error).message ?? String(e);
+                if (m.includes("Credits already issued")) {
+                  setMsg({ tone: "ok", text: "Credits already issued for this company and year." });
+                } else {
+                  setMsg({ tone: "err", text: m });
+                }
               } finally {
                 setPending(null);
               }
@@ -2448,7 +2533,9 @@ function CarbonCreditsView() {
             {pending === "issue" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
             Issue Credits
           </button>
-          <p className="text-[12px] text-foreground/55">Requires prior checkCompliance for the company and year.</p>
+          <p className="text-[12px] text-foreground/55">
+            Requires prior checkCompliance for the company and year. Re-issue reverts cleanly.
+          </p>
         </div>
 
         <div className="rounded-2xl border border-foreground/10 bg-surface p-8 space-y-5">

@@ -8,6 +8,7 @@ import { createCofheClient } from "./utils";
 task("covertmrv:set-cap", "Encrypt and store a regulatory cap for a company")
   .addParam("company", "Address of the company")
   .addParam("cap", "Cap value in tonnes (uint64)")
+  .addOptionalParam("year", "Reporting year (ISO)", "2025")
   .setAction(async (args, hre: HardhatRuntimeEnvironment) => {
     const { ethers, network } = hre;
     const [signer] = await ethers.getSigners();
@@ -31,14 +32,15 @@ task("covertmrv:set-cap", "Encrypt and store a regulatory cap for a company")
       .execute();
 
     console.log(`Setting encrypted cap for ${args.company} (${args.cap})...`);
-    const tx = await registry.setCap(args.company, encCap);
+    const year = BigInt(args.year);
+    const tx = await registry.setCap(args.company, year, encCap);
     await tx.wait();
-    console.log(`✓ cap set (tx ${tx.hash})`);
+    console.log(`✓ cap set for year ${year} (tx ${tx.hash})`);
 
     // Try to grant CapCheck access if a total exists.
     try {
       console.log(`Granting CapCheck read access...`);
-      const tx2 = await registry.grantCheckAccess(args.company, capCheckAddress);
+      const tx2 = await registry.grantCheckAccess(args.company, year, capCheckAddress);
       await tx2.wait();
       console.log(`✓ grantCheckAccess (tx ${tx2.hash})`);
     } catch (err) {

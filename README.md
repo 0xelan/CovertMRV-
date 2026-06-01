@@ -244,24 +244,24 @@ Chain ID: `421614` · Deployer: [`0x2301CD93feC8249219b4b661b4bc81889b494De6`](h
 
 | Contract | Address |
 |----------|---------|
-| CapRegistry | [`0xbc3dc391AfbE94BF55cedDF5Aa05dA8e5e73dD41`](https://sepolia.arbiscan.io/address/0xbc3dc391AfbE94BF55cedDF5Aa05dA8e5e73dD41) |
-| CapCheck | [`0x2d692212B3bA5c46a1e97d320eA198EaB65C846B`](https://sepolia.arbiscan.io/address/0x2d692212B3bA5c46a1e97d320eA198EaB65C846B) |
-| ComplianceCertificate | [`0xe7A84b47fF5DE41F0C112256b659B14A33fab66e`](https://sepolia.arbiscan.io/address/0xe7A84b47fF5DE41F0C112256b659B14A33fab66e) |
+| CapRegistry | [`0x10e76b22Cc21B606c6d6aD9B1C4b0192e8168147`](https://sepolia.arbiscan.io/address/0x10e76b22Cc21B606c6d6aD9B1C4b0192e8168147) |
+| CapCheck | [`0xAB5B0f9249AaB16dCe45bc45e24Ece6d2B14d189`](https://sepolia.arbiscan.io/address/0xAB5B0f9249AaB16dCe45bc45e24Ece6d2B14d189) |
+| ComplianceCertificate | [`0xfC00455c683AFCC57FF47cbF38C3480222e7f437`](https://sepolia.arbiscan.io/address/0xfC00455c683AFCC57FF47cbF38C3480222e7f437) |
 
 ### Supply chain (ScopeX)
 
 | Contract | Address |
 |----------|---------|
-| SupplierAttest | [`0xBF5246DECC3C18F8c9A1B310DDF6CeeA0104980D`](https://sepolia.arbiscan.io/address/0xBF5246DECC3C18F8c9A1B310DDF6CeeA0104980D) |
-| ProductFootprint | [`0x7B15F60d8252038281818e138426c834428f9152`](https://sepolia.arbiscan.io/address/0x7B15F60d8252038281818e138426c834428f9152) |
+| SupplierAttest | [`0x7B514F53ACcC6757e6BeB361A75F9f0A31552612`](https://sepolia.arbiscan.io/address/0x7B514F53ACcC6757e6BeB361A75F9f0A31552612) |
+| ProductFootprint | [`0x8042463634B04bd9B39A2854ba614B9A05452c67`](https://sepolia.arbiscan.io/address/0x8042463634B04bd9B39A2854ba614B9A05452c67) |
 
 ### Carbon credits
 
 | Contract | Address |
 |----------|---------|
-| cCO2 (FHERC20) | [`0x794ebf1C753FA7DA424624B338cFE07697195670`](https://sepolia.arbiscan.io/address/0x794ebf1C753FA7DA424624B338cFE07697195670) |
-| CreditIssuer | [`0xcb2a38D5Ac1c06345450b1564558da468e703Efb`](https://sepolia.arbiscan.io/address/0xcb2a38D5Ac1c06345450b1564558da468e703Efb) |
-| CreditRetire | [`0x22930E042B2BE81eC4fcfe9C4e927533D44c9Aab`](https://sepolia.arbiscan.io/address/0x22930E042B2BE81eC4fcfe9C4e927533D44c9Aab) |
+| cCO2 (FHERC20) | [`0xa9bA06359DDf073a226652F10f13863Af824cAd1`](https://sepolia.arbiscan.io/address/0xa9bA06359DDf073a226652F10f13863Af824cAd1) |
+| CreditIssuer | [`0x83E5d71D7661D024C1E06E0c3C71b1e84Ce86664`](https://sepolia.arbiscan.io/address/0x83E5d71D7661D024C1E06E0c3C71b1e84Ce86664) |
+| CreditRetire | [`0x5f280cFc9055f2f22C4E3f9115Cd86fAa0544320`](https://sepolia.arbiscan.io/address/0x5f280cFc9055f2f22C4E3f9115Cd86fAa0544320) |
 
 ---
 
@@ -288,7 +288,7 @@ Chain ID: `421614` · Deployer: [`0x2301CD93feC8249219b4b661b4bc81889b494De6`](h
 | Frontend | React 19, TanStack Router, Tailwind v4, wagmi v2 |
 | API | Vercel Node.js function, HMAC-SHA256 |
 | Network | Arbitrum Sepolia (421614) |
-| Testing | Hardhat + @cofhe/hardhat-plugin — **67 tests** |
+| Testing | Hardhat + @cofhe/hardhat-plugin — **72 tests** |
 
 ---
 
@@ -341,7 +341,7 @@ The `SUBMIT_PRIVATE_KEY` wallet must be registered as **EMITTER** on CapRegistry
 
 ```bash
 npx hardhat test
-# 67 passing — CapRegistry, CapCheck, CapRegistryPrivacy, DisclosureACL,
+# 72 passing — CapRegistry, CapCheck, CapRegistryPrivacy, DisclosureACL,
 # SupplierAttest, ProductFootprint, cCO2, CreditIssuer, CreditRetire
 ```
 
@@ -353,15 +353,15 @@ Set these in the Vercel project dashboard (Production + Preview):
 
 | Variable | Value |
 |----------|-------|
-| `VITE_CAP_REGISTRY_ADDRESS` | `0xbc3dc391AfbE94BF55cedDF5Aa05dA8e5e73dD41` |
-| `VITE_CAP_CHECK_ADDRESS` | `0x2d692212B3bA5c46a1e97d320eA198EaB65C846B` |
-| `VITE_COMPLIANCE_CERTIFICATE_ADDRESS` | `0xe7A84b47fF5DE41F0C112256b659B14A33fab66e` |
-| `VITE_SUPPLIER_ATTEST_ADDRESS` | `0xBF5246DECC3C18F8c9A1B310DDF6CeeA0104980D` |
-| `VITE_PRODUCT_FOOTPRINT_ADDRESS` | `0x7B15F60d8252038281818e138426c834428f9152` |
-| `VITE_CCO2_ADDRESS` | `0x794ebf1C753FA7DA424624B338cFE07697195670` |
-| `VITE_CREDIT_ISSUER_ADDRESS` | `0xcb2a38D5Ac1c06345450b1564558da468e703Efb` |
-| `VITE_CREDIT_RETIRE_ADDRESS` | `0x22930E042B2BE81eC4fcfe9C4e927533D44c9Aab` |
-| `CAP_REGISTRY_ADDRESS` | `0xbc3dc391AfbE94BF55cedDF5Aa05dA8e5e73dD41` |
+| `VITE_CAP_REGISTRY_ADDRESS` | `0x10e76b22Cc21B606c6d6aD9B1C4b0192e8168147` (or omit — baked in `contracts.ts`) |
+| `VITE_CAP_CHECK_ADDRESS` | `0xAB5B0f9249AaB16dCe45bc45e24Ece6d2B14d189` |
+| `VITE_COMPLIANCE_CERTIFICATE_ADDRESS` | `0xfC00455c683AFCC57FF47cbF38C3480222e7f437` |
+| `VITE_SUPPLIER_ATTEST_ADDRESS` | `0x7B514F53ACcC6757e6BeB361A75F9f0A31552612` |
+| `VITE_PRODUCT_FOOTPRINT_ADDRESS` | `0x8042463634B04bd9B39A2854ba614B9A05452c67` |
+| `VITE_CCO2_ADDRESS` | `0xa9bA06359DDf073a226652F10f13863Af824cAd1` |
+| `VITE_CREDIT_ISSUER_ADDRESS` | `0x83E5d71D7661D024C1E06E0c3C71b1e84Ce86664` |
+| `VITE_CREDIT_RETIRE_ADDRESS` | `0x5f280cFc9055f2f22C4E3f9115Cd86fAa0544320` |
+| `CAP_REGISTRY_ADDRESS` | `0x10e76b22Cc21B606c6d6aD9B1C4b0192e8168147` |
 | `ARBITRUM_SEPOLIA_RPC_URL` | `https://sepolia-rollup.arbitrum.io/rpc` |
 | `API_SECRET` | *(your existing secret — do not rotate unless needed)* |
 | `SUBMIT_PRIVATE_KEY` | *(your server wallet private key — must be EMITTER)* |

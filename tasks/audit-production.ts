@@ -7,9 +7,11 @@ const ZERO = "0x0000000000000000000000000000000000000000000000000000000000000000
 
 task("covertmrv:audit", "On-chain production audit for a user wallet")
   .addOptionalParam("company", "Company wallet to audit", TARGET)
+  .addOptionalParam("year", "Reporting year (ISO)", "2025")
   .setAction(async (args, hre: HardhatRuntimeEnvironment) => {
     const { ethers, network } = hre;
     const company = args.company as string;
+    const year = BigInt(args.year);
     if (!ethers.isAddress(company)) throw new Error(`Invalid company: ${company}`);
 
     const deployments = JSON.parse(
@@ -24,11 +26,12 @@ task("covertmrv:audit", "On-chain production audit for a user wallet")
     const creditIssuer = await ethers.getContractAt("CreditIssuer", entry.creditIssuer);
 
     const role = await registry.roleOf(company);
-    const facilityCount = await registry.getFacilityCount(company);
-    let totalHandle = await registry.getCompanyTotal(company);
-    let capHandle = await registry.getRegulatoryCap(company);
-    const compliance = await capCheck.complianceResults(company);
-    const settled = await capCheck.isSettled(company);
+    const facilityCount = await registry.getFacilityCount(company, year);
+    let totalHandle = await registry.getCompanyTotal(company, year);
+    let capHandle = await registry.getRegulatoryCap(company, year);
+    const compliance = await capCheck.complianceResults(company, year);
+    const settled = await capCheck.isSettled(company, year);
+    const creditsIssued = await creditIssuer.creditsIssued(company, year);
     const certCapCheck = await cert.capCheck();
     const checkCert = await capCheck.certificate();
     const checkIssuer = await capCheck.creditIssuer();
@@ -44,7 +47,8 @@ task("covertmrv:audit", "On-chain production audit for a user wallet")
 
     console.log("\n=== CovertMRV production audit ===");
     console.log(`Network: ${network.name}`);
-    console.log(`Company: ${company}\n`);
+    console.log(`Company: ${company}`);
+    console.log(`Reporting year: ${year}\n`);
 
     console.log("--- Deployments ---");
     for (const [k, v] of Object.entries(entry)) {
@@ -66,21 +70,22 @@ task("covertmrv:audit", "On-chain production audit for a user wallet")
     console.log("\n--- User onboarding state ---");
     const roleN = BigInt(role);
     console.log(`  role: ${role} (${roleN === 1n ? "EMITTER" : roleN === 0n ? "NONE" : "OTHER"})`);
-    console.log(`  facilityCount: ${facilityCount}`);
+    console.log(`  facilityCount (${year}): ${facilityCount}`);
     console.log(`  companyTotal handle: ${isZero(totalHandle) ? "ZERO (not aggregated)" : totalHandle}`);
     console.log(`  regulatoryCap handle: ${isZero(capHandle) ? "ZERO (admin setCap needed)" : capHandle}`);
     console.log(`  compliance.exists: ${compliance.exists}`);
     console.log(`  compliance.encryptedResult: ${isZero(compliance.encryptedResult) ? "ZERO" : compliance.encryptedResult}`);
     console.log(`  compliance.settled: ${compliance.settled}`);
     console.log(`  isSettled public: ${settled[0]} result=${settled[1]}`);
+    console.log(`  creditsIssued: ${creditsIssued}`);
 
     console.log("\n--- Blockers for full flow ---");
     const blockers: string[] = [];
     if (roleN === 0n) blockers.push("Register emitter (registerAsEmitter)");
-    if (BigInt(facilityCount) === 0n) blockers.push("Submit at least one facility emissions");
-    if (isZero(totalHandle)) blockers.push("Run aggregateTotal (manual — user must confirm wallet)");
-    if (isZero(capHandle)) blockers.push("Admin setCap for this address");
-    if (!compliance.exists) blockers.push("Run checkCompliance");
+    if (BigInt(facilityCount) === 0n) blockers.push(`Submit facility emissions for ${year}`);
+    if (isZero(totalHandle)) blockers.push(`Run aggregateTotal(company, ${year})`);
+    if (isZero(capHandle)) blockers.push(`Admin setCap(company, ${year})`);
+    if (!compliance.exists) blockers.push(`Run checkCompliance(company, ${year})`);
     if (compliance.exists && isZero(compliance.encryptedResult))
       blockers.push("Compliance record exists but handle zero — wrong CapCheck env?");
     if (blockers.length === 0) blockers.push("None — user can decrypt if ACL + permit OK");

@@ -67,7 +67,7 @@ describe("CapRegistryPrivacy", function () {
 
     // 'other' is neither owner nor company — should revert
     await expect(
-      registry.connect(other).getFacilityCount(company.address)
+      registry.connect(other).getFacilityCount(company.address, 2025)
     ).to.be.revertedWith("Unauthorized");
   });
 
@@ -76,7 +76,7 @@ describe("CapRegistryPrivacy", function () {
     await registry.connect(company).registerAsEmitter();
     await submitFacility(registry, company, companyClient, 1, 1000n);
 
-    expect(await registry.connect(owner).getFacilityCount(company.address)).to.equal(1n);
+    expect(await registry.connect(owner).getFacilityCount(company.address, 2025)).to.equal(1n);
   });
 
   it("getFacilityCount succeeds for the company itself", async function () {
@@ -85,7 +85,7 @@ describe("CapRegistryPrivacy", function () {
     await submitFacility(registry, company, companyClient, 1, 1000n);
     await submitFacility(registry, company, companyClient, 2, 2000n);
 
-    expect(await registry.connect(company).getFacilityCount(company.address)).to.equal(2n);
+    expect(await registry.connect(company).getFacilityCount(company.address, 2025)).to.equal(2n);
   });
 
   // ─── Privacy gap #5: encrypted scope returns a euint8 handle, not plaintext
@@ -96,7 +96,7 @@ describe("CapRegistryPrivacy", function () {
     // Submit with scope = 2 (Scope3)
     await submitFacility(registry, company, companyClient, 7, 9999n, 2025, 2);
 
-    const scopeHandle = await registry.getFacilityScope(company.address, 7);
+    const scopeHandle = await registry.getFacilityScope(company.address, 2025, 7);
 
     // The returned value is an encrypted handle (bytes32 ctHash), not 0/1/2
     // euint8 is `type euint8 is bytes32` in cofhe-contracts — ethers.js returns hex string
@@ -113,7 +113,7 @@ describe("CapRegistryPrivacy", function () {
     await registry.connect(company).registerAsEmitter();
     await submitFacility(registry, company, companyClient, 5, 1234n);
 
-    const countHandle = await registry.getEncryptedFacilityCount(company.address);
+    const countHandle = await registry.getEncryptedFacilityCount(company.address, 2025);
     // euint64 is `type euint64 is bytes32` in cofhe-contracts — ethers.js returns hex string
     expect(typeof countHandle).to.equal("string");
     // Zero address / uninitialized would be ZeroHash — handle should be non-zero
@@ -128,9 +128,9 @@ describe("CapRegistryPrivacy", function () {
     await registry.connect(company).registerAsEmitter();
     await submitFacility(registry, company, companyClient, 3, 7777n, 2025, 1);
 
-    await registry.connect(company).grantFacilityDecrypt(3, auditor.address);
+    await registry.connect(company).grantFacilityDecrypt(3, 2025, auditor.address);
 
-    const scopeHandle = await registry.getFacilityScope(company.address, 3);
+    const scopeHandle = await registry.getFacilityScope(company.address, 2025, 3);
     const decScope = await auditorClient.decryptForView(scopeHandle, FheTypes.Uint8).execute();
     expect(decScope).to.equal(1n); // scope 1 = Scope2
   });

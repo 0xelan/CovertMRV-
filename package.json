@@ -11,6 +11,7 @@
     "set-cap:arb": "hardhat covertmrv:set-cap --network arb-sepolia",
     "grant-role:arb": "hardhat covertmrv:grant-role --network arb-sepolia",
     "audit:arb": "hardhat covertmrv:audit --network arb-sepolia",
+    "sync-abis": "hardhat sync-abis",
     "clean": "hardhat clean"
   },
   "devDependencies": {

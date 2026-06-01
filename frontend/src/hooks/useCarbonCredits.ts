@@ -50,6 +50,19 @@ export function useCarbonCredits() {
     query: { enabled: !!address },
   });
 
+  const creditsIssued = useCallback(
+    async (company: Address, reportingYear: number) => {
+      if (!publicClient) throw new Error("No public client");
+      return publicClient.readContract({
+        address: CREDIT_ISSUER_ADDRESS,
+        abi: CREDIT_ISSUER_ABI,
+        functionName: "creditsIssued",
+        args: [company, BigInt(reportingYear)],
+      }) as Promise<boolean>;
+    },
+    [publicClient],
+  );
+
   const confidentialBalance = useReadContract({
     address: CCO2_ADDRESS,
     abi: CCO2_ABI,
@@ -143,6 +156,7 @@ export function useCarbonCredits() {
     fheWorking: fhe.isWorking,
     registerAsEmitter,
     issueCredits,
+    creditsIssued,
     retireCredits,
     decryptBalance,
     refetchBalance: () => {

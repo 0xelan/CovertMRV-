@@ -4,6 +4,7 @@ import { expect } from "chai";
 import hre from "hardhat";
 
 const YEAR = 2025;
+const YEAR_B = 2026;
 
 describe("CapCheck", function () {
   async function deployFixture() {
@@ -24,7 +25,6 @@ describe("CapCheck", function () {
     );
     await check.waitForDeployment();
 
-    // Wire certificate → CapCheck
     await cert.connect(owner).setCapCheck(await check.getAddress());
     await check.connect(owner).setCertificate(await cert.getAddress());
 
@@ -46,7 +46,8 @@ describe("CapCheck", function () {
   async function setupCompliantState(
     deployed: Awaited<ReturnType<typeof deployFixture>>,
     emissions: bigint,
-    cap: bigint
+    cap: bigint,
+    year = YEAR
   ) {
     const { registry, check, owner, company, ownerClient, companyClient } =
       deployed;
@@ -56,64 +57,78 @@ describe("CapCheck", function () {
     const [encEmissions, encScope] = await companyClient
       .encryptInputs([Encryptable.uint64(emissions), Encryptable.uint8(1n)])
       .execute();
-    await registry.connect(company).submitEmissions(1, encEmissions, encScope, YEAR);
-    await registry.aggregateTotal(company.address);
+    await registry.connect(company).submitEmissions(1, encEmissions, encScope, year);
+    await registry.aggregateTotal(company.address, year);
 
     const [encCap] = await ownerClient
       .encryptInputs([Encryptable.uint64(cap)])
       .execute();
-    await registry.connect(owner).setCap(company.address, encCap);
+    await registry.connect(owner).setCap(company.address, year, encCap);
 
-    // Authorize CapCheck to read total + cap.
     await registry
       .connect(owner)
-      .grantCheckAccess(company.address, await check.getAddress());
+      .grantCheckAccess(company.address, year, await check.getAddress());
   }
 
   it("checkCompliance computes FHE.lte(total, cap) and emits event", async function () {
     const fx = await loadFixture(deployFixture);
     await setupCompliantState(fx, 1000n, 5000n);
-
     await expect(fx.check.checkCompliance(fx.company.address, YEAR)).to.emit(
       fx.check,
       "ComplianceChecked"
     );
   });
 
-  it("company can decrypt its own boolean status (compliant)", async function () {
+  it("company can decrypt its own compliance ebool", async function () {
     const fx = await loadFixture(deployFixture);
     await setupCompliantState(fx, 1000n, 5000n);
-    await fx.check.checkCompliance(fx.company.address, YEAR);
+    await fx.check.connect(fx.company).checkCompliance(fx.company.address, YEAR);
 
-    const handle = await fx.check.getComplianceResult(fx.company.address);
+    const handle = await fx.check.getComplianceResult(fx.company.address, YEAR);
     const result = await fx.companyClient
       .decryptForView(handle, FheTypes.Bool)
       .execute();
     expect(result).to.equal(true);
   });
 
-  it("company sees false when over the cap", async function () {
+  it("owner can decrypt compliance ebool", async function () {
+    const fx = await loadFixture(deployFixture);
+    await setupCompliantState(fx, 1000n, 5000n);
+    await fx.check.checkCompliance(fx.company.address, YEAR);
+
+    const handle = await fx.check.getComplianceResult(fx.company.address, YEAR);
+    const result = await fx.ownerClient
+      .decryptForView(handle, FheTypes.Bool)
+      .execute();
+    expect(result).to.equal(true);
+  });
+
+  it("non-compliant emissions decrypt to false", async function () {
     const fx = await loadFixture(deployFixture);
     await setupCompliantState(fx, 90000n, 1000n);
     await fx.check.checkCompliance(fx.company.address, YEAR);
 
-    const handle = await fx.check.getComplianceResult(fx.company.address);
+    const handle = await fx.check.getComplianceResult(fx.company.address, YEAR);
     const result = await fx.companyClient
       .decryptForView(handle, FheTypes.Bool)
       .execute();
     expect(result).to.equal(false);
   });
 
-  it("regulator (owner) can decrypt boolean for view", async function () {
+  it("third party cannot checkCompliance for another company", async function () {
     const fx = await loadFixture(deployFixture);
     await setupCompliantState(fx, 1000n, 5000n);
-    await fx.check.checkCompliance(fx.company.address, YEAR);
+    await expect(
+      fx.check.connect(fx.other).checkCompliance(fx.company.address, YEAR)
+    ).to.be.revertedWith("Not authorized");
+  });
 
-    const handle = await fx.check.getComplianceResult(fx.company.address);
-    const result = await fx.ownerClient
-      .decryptForView(handle, FheTypes.Bool)
-      .execute();
-    expect(result).to.equal(true);
+  it("cap for one year cannot satisfy another year's check", async function () {
+    const fx = await loadFixture(deployFixture);
+    await setupCompliantState(fx, 1000n, 5000n, YEAR);
+    await expect(
+      fx.check.checkCompliance(fx.company.address, YEAR_B)
+    ).to.be.revertedWith("No emissions total");
   });
 
   it("checkCompliance reverts when no total exists", async function () {
@@ -130,7 +145,7 @@ describe("CapCheck", function () {
       .encryptInputs([Encryptable.uint64(1n), Encryptable.uint8(1n)])
       .execute();
     await fx.registry.connect(fx.company).submitEmissions(1, encE, encScope, YEAR);
-    await fx.registry.aggregateTotal(fx.company.address);
+    await fx.registry.aggregateTotal(fx.company.address, YEAR);
     await expect(
       fx.check.checkCompliance(fx.company.address, YEAR)
     ).to.be.revertedWith("No regulatory cap");
@@ -141,7 +156,7 @@ describe("CapCheck", function () {
     await setupCompliantState(fx, 1000n, 5000n);
     await fx.check.checkCompliance(fx.company.address, YEAR);
 
-    const handle = await fx.check.getComplianceResult(fx.company.address);
+    const handle = await fx.check.getComplianceResult(fx.company.address, YEAR);
     const { decryptedValue, signature } = await fx.ownerClient
       .decryptForTx(handle)
       .withPermit()
@@ -149,24 +164,27 @@ describe("CapCheck", function () {
 
     const tx = await fx.check
       .connect(fx.owner)
-      .settleCompliance(fx.company.address, decryptedValue as boolean, signature);
+      .settleCompliance(
+        fx.company.address,
+        YEAR,
+        decryptedValue as boolean,
+        signature
+      );
     const receipt = await tx.wait();
-    // ComplianceSettled(company, result, tokenId)
     const event = receipt?.logs.find(
       (l: { fragment?: { name: string } }) => l?.fragment?.name === "ComplianceSettled"
-    ) as { args: [string, boolean, bigint] } | undefined;
+    ) as { args: [string, bigint, boolean, bigint] } | undefined;
     expect(event).to.not.be.undefined;
-    expect(event!.args[1]).to.equal(true);
-    const tokenId = event!.args[2];
+    expect(event!.args[2]).to.equal(true);
+    const tokenId = event!.args[3];
     expect(tokenId).to.be.gt(0n);
 
-    // Certificate minted to company
     expect(await fx.cert.ownerOf(tokenId)).to.equal(fx.company.address);
     const certData = await fx.cert.getCertificate(fx.company.address, YEAR);
     expect(certData.compliant).to.equal(true);
     expect(certData.reportingYear).to.equal(YEAR);
 
-    const [settled, value] = await fx.check.isSettled(fx.company.address);
+    const [settled, value] = await fx.check.isSettled(fx.company.address, YEAR);
     expect(settled).to.equal(true);
     expect(value).to.equal(true);
   });
@@ -178,7 +196,7 @@ describe("CapCheck", function () {
     await expect(
       fx.check
         .connect(fx.other)
-        .settleCompliance(fx.company.address, true, "0x")
+        .settleCompliance(fx.company.address, YEAR, true, "0x")
     ).to.be.revertedWith("Only owner");
   });
 
@@ -187,7 +205,7 @@ describe("CapCheck", function () {
     await setupCompliantState(fx, 1000n, 5000n);
     await fx.check.checkCompliance(fx.company.address, YEAR);
 
-    const handle = await fx.check.getComplianceResult(fx.company.address);
+    const handle = await fx.check.getComplianceResult(fx.company.address, YEAR);
     const { decryptedValue, signature } = await fx.ownerClient
       .decryptForTx(handle)
       .withPermit()
@@ -197,6 +215,7 @@ describe("CapCheck", function () {
       .connect(fx.owner)
       .settleCompliance(
         fx.company.address,
+        YEAR,
         decryptedValue as boolean,
         signature
       );
@@ -206,6 +225,7 @@ describe("CapCheck", function () {
         .connect(fx.owner)
         .settleCompliance(
           fx.company.address,
+          YEAR,
           decryptedValue as boolean,
           signature
         )
