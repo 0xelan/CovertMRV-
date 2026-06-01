@@ -1240,6 +1240,12 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     return () => window.clearTimeout(timer);
   }, [tx.isSuccess, ctx.refetch]);
 
+  // After a new check tx, wait for ACL propagation before decrypt (step 4).
+  // Existing on-chain results (page load / return visit) skip this gate.
+  const awaitingAclSync = !!hash && step > 0 && step < 4;
+  const decryptReady =
+    ctx.hasComplianceResult && !awaitingAclSync && !tx.isLoading;
+
   // Pre-flight: are both prerequisites met?
   const noTotal = !ctx.hasAggregated;
   const noCap = !ctx.hasCapSet;
@@ -1458,7 +1464,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
                     </p>
                     <p className="font-mono text-[11px] text-foreground/50">
                       {ctx.hasComplianceResult
-                        ? step < 4
+                        ? awaitingAclSync
                           ? "ebool · syncing decrypt access…"
                           : "ebool · ready to decrypt"
                         : "no result yet — run check"}
@@ -1501,7 +1507,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             </div>
 
             <button
-              disabled={!ctx.hasComplianceResult || decrypting || step < 4}
+              disabled={!decryptReady || decrypting}
               onClick={decrypt}
               className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full border border-foreground/25 bg-foreground/[0.04] px-6 py-3 text-[13px] font-semibold text-foreground transition hover:border-emerald hover:text-emerald disabled:opacity-50"
             >
