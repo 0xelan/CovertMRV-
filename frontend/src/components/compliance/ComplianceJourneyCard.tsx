@@ -1,22 +1,15 @@
 import { motion } from "framer-motion";
 import { Check, Clock, Loader2 } from "lucide-react";
-import type { useCovertMrv } from "@/hooks/useCovertMrv";
-import { computeComplianceJourney, type JourneyStepStatus } from "@/lib/compliance-journey";
+import {
+  computeComplianceJourney,
+  type ComplianceJourneyCtx,
+  type JourneyStepStatus,
+} from "@/lib/compliance-journey";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
 type Props = {
-  ctx: Pick<
-    ReturnType<typeof useCovertMrv>,
-    | "role"
-    | "facilityCount"
-    | "facilityIds"
-    | "hasAggregated"
-    | "hasCapSet"
-    | "hasComplianceResult"
-    | "settled"
-    | "canAggregate"
-  >;
+  ctx: ComplianceJourneyCtx;
   compact?: boolean;
 };
 

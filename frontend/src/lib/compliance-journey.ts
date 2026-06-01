@@ -1,4 +1,14 @@
-import type { useCovertMrv } from "@/hooks/useCovertMrv";
+/** Explicit shape — do not use `ReturnType<typeof useCovertMrv>` (causes circular init in production chunks). */
+export type ComplianceJourneyCtx = {
+  role: number;
+  facilityCount: number;
+  facilityIds: readonly bigint[];
+  hasAggregated: boolean;
+  hasCapSet: boolean;
+  hasComplianceResult: boolean;
+  settled?: readonly [settled: boolean, result: boolean];
+  canAggregate?: boolean;
+};
 
 export type JourneyStepId =
   | "registered"
@@ -26,17 +36,7 @@ export type ComplianceJourney = {
   privacyMessage: string;
 };
 
-type Ctx = Pick<
-  ReturnType<typeof useCovertMrv>,
-  | "role"
-  | "facilityCount"
-  | "facilityIds"
-  | "hasAggregated"
-  | "hasCapSet"
-  | "hasComplianceResult"
-  | "settled"
-  | "canAggregate"
->;
+type Ctx = ComplianceJourneyCtx;
 
 const STEP_DEFS: { id: JourneyStepId; label: string }[] = [
   { id: "registered", label: "Registered as Emitter" },
@@ -174,7 +174,6 @@ export function getActionGate(
     hasRetireAmount?: boolean;
   },
 ): ActionGate {
-  const journey = computeComplianceJourney(ctx);
   const e = extras ?? {};
 
   switch (action) {

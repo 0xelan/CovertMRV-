@@ -14,13 +14,11 @@ type Props = {
 };
 
 export function GatedAction({ gate, children, showHint = true }: Props) {
-  const child = gate.allowed
-    ? children
-    : (
-        <span className="inline-flex w-full flex-col">
-          {cloneDisabled(child)}
-        </span>
-      );
+  const child = gate.allowed ? (
+    children
+  ) : (
+    <span className="inline-flex w-full flex-col">{cloneDisabled(children)}</span>
+  );
 
   const wrapped = (
     <Tooltip>
