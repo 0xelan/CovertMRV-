@@ -51,6 +51,12 @@ import {
 } from "@/config/contracts";
 import { fmtTonnes, shortAddress, shortHandle, fmtCountdown } from "@/lib/format";
 import { isInitializedCtHandle } from "@/lib/ct-handle";
+import { computeComplianceJourney, getActionGate } from "@/lib/compliance-journey";
+import { translateUserError } from "@/lib/user-facing-errors";
+import { ComplianceJourneyCard } from "@/components/compliance/ComplianceJourneyCard";
+import { RegulatoryAwaitingPanel } from "@/components/compliance/RegulatoryAwaitingPanel";
+import { GatedAction } from "@/components/compliance/GatedAction";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -87,6 +93,7 @@ function Dashboard() {
   const ctx = useCovertMrv(reportingYear);
 
   return (
+    <TooltipProvider delayDuration={300}>
     <div className="min-h-screen bg-background text-foreground">
       <div className="grid min-h-screen grid-cols-[280px_1fr]">
         {/* Sidebar */}
@@ -193,11 +200,12 @@ function Dashboard() {
           )}
           {view === "console" && <DisclosureConsole ctx={ctx} />}
           {view === "certificate" && <CertificateView ctx={ctx} />}
-          {view === "supply-chain" && <SupplyChainView />}
-          {view === "credits" && <CarbonCreditsView />}
+          {view === "supply-chain" && <SupplyChainView ctx={ctx} />}
+          {view === "credits" && <CarbonCreditsView ctx={ctx} />}
         </main>
       </div>
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -552,6 +560,11 @@ function Overview({
         />
       </div>
       {ctx.role === 0 && <EmitterRegistrationCard ctx={ctx} />}
+      {ctx.role > 0 && (
+        <div className="px-10 pb-2">
+          <ComplianceJourneyCard ctx={ctx} compact />
+        </div>
+      )}
       <div className="grid gap-6 p-10 lg:grid-cols-3">
         <SpotlightCard className="rounded-2xl border border-foreground/10 bg-surface p-7 lg:col-span-2">
           <div className="flex items-center justify-between">
@@ -1304,10 +1317,10 @@ function SubmitEmissions({
 /* -------------------- Compliance Check -------------------- */
 
 const CHECK_STEPS = [
-  "FHE.lte(total, cap) — comparing ciphertexts on-chain…",
-  "Allowing result handle to caller and company…",
-  "Encrypted boolean stored in CapCheck.results…",
-  "Result available · decrypt to view in your tab.",
+  "Comparing your encrypted total against the regulatory cap…",
+  "Securing the verification result for your organization…",
+  "Recording the privacy-preserving compliance outcome…",
+  "Result ready — you may view your status below.",
 ];
 
 function ComplianceCheck({
@@ -1349,16 +1362,17 @@ function ComplianceCheck({
   // After a new check tx, wait for ACL propagation before decrypt (step 4).
   // Existing on-chain results (page load / return visit) skip this gate.
   const awaitingAclSync = !!hash && step > 0 && step < 4;
-  const decryptReady =
-    ctx.hasComplianceResult &&
-    isInitializedCtHandle(ctx.complianceHandle) &&
-    !awaitingAclSync &&
-    !tx.isLoading;
-
-  // Pre-flight: are both prerequisites met?
+  const journey = useMemo(() => computeComplianceJourney(ctx), [ctx]);
+  const runGate = getActionGate(ctx, "run_compliance_check", {
+    txBusy: step === 1 || step === 2,
+  });
+  const decryptGate = getActionGate(ctx, "decrypt_compliance", {
+    awaitingAcl: awaitingAclSync,
+    txBusy: tx.isLoading,
+    decrypting,
+  });
   const noTotal = !ctx.hasAggregated;
-  const noCap = !ctx.hasCapSet;
-  const canRun = !noTotal && !noCap;
+  const showRegulatory = journey.showRegulatoryPanel;
 
   const yearInput = (
     <div className="flex items-center gap-3">
@@ -1394,7 +1408,7 @@ function ComplianceCheck({
       }
       ctx.refetch();
     } catch (e) {
-      setError("Aggregate failed: " + (e as Error).message);
+      setError(translateUserError(e));
     } finally {
       setAggregating(false);
       aggregateInFlight.current = false;
@@ -1412,37 +1426,15 @@ function ComplianceCheck({
       const h = await ctx.checkCompliance(ctx.address as `0x${string}`, reportingYear);
       setHash(h);
     } catch (e) {
-      const msg = (e as Error).message ?? String(e);
-      // Decode common revert reasons into helpful messages.
-      if (msg.includes("No emissions total") || msg.includes("isInitialized")) {
-        setError("No aggregated total on-chain. Click \"Aggregate\" below first.");
-      } else if (msg.includes("No regulatory cap")) {
-        setError(
-          `Regulator cap required for reporting year ${reportingYear}. Admin must setCap + grantCheckAccess for that year.`,
-        );
-      } else {
-        setError(msg);
-      }
+      setError(translateUserError(e));
       setStep(0);
     }
   }
 
   async function decrypt() {
     if (decryptInFlight.current || decrypting) return;
-    if (!ctx.hasComplianceResult || !isInitializedCtHandle(ctx.complianceHandle)) {
-      setError(
-        "No encrypted compliance result for this wallet. Run Compliance Check here, wait for confirmation, then decrypt.",
-      );
-      return;
-    }
-    if (ctx.complianceExists && !isInitializedCtHandle(ctx.complianceHandle)) {
-      setError(
-        "On-chain record exists but the ciphertext handle is empty — wrong CapCheck address in env or stale deployment. Re-run check after fixing VITE_CAP_CHECK_ADDRESS.",
-      );
-      return;
-    }
-    if (tx.isLoading) {
-      setError("Wait for the compliance check transaction to confirm.");
+    if (!decryptGate.allowed) {
+      setError(decryptGate.reason);
       return;
     }
     decryptInFlight.current = true;
@@ -1452,16 +1444,7 @@ function ComplianceCheck({
       const v = await ctx.decryptBool(ctx.complianceHandle);
       setDecrypted(v);
     } catch (e) {
-      const msg = (e as Error).message ?? String(e);
-      if (msg.includes("already in progress")) {
-        setError("Decrypt in progress — approve the permit in your wallet once.");
-      } else if (msg.includes("403") || msg.includes("access denied")) {
-        setError(
-          "Decrypt access denied. Run Compliance Check with this wallet, wait for confirmation, then try again. Each wallet needs its own check.",
-        );
-      } else {
-        setError(msg);
-      }
+      setError(translateUserError(e));
     } finally {
       setDecrypting(false);
       decryptInFlight.current = false;
@@ -1478,50 +1461,64 @@ function ComplianceCheck({
         title="Compliance Check"
         desc="Run an encrypted comparison between your aggregate emissions and the regulator's encrypted cap. The chain returns a boolean — never the values."
       />
-      <div className="grid gap-6 p-10 lg:grid-cols-[1fr_1fr]">
+      <div className="px-10 pb-4">
+        <ComplianceJourneyCard ctx={ctx} />
+      </div>
+      <div className="grid gap-6 p-10 pt-0 lg:grid-cols-[1fr_1fr]">
         <div className="rounded-2xl border border-foreground/10 bg-surface p-8">
           <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">
             Verification Engine
           </p>
 
-          {/* Pre-flight requirement banners */}
-          {noTotal && (
-            <div className="mt-5 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
-              <AlertTriangle className="mt-0.5 h-4 w-4 flex-none text-amber-400" />
-              <div className="flex-1 text-[13px] text-foreground/75">
-                <span className="font-semibold text-amber-400">Step required: </span>
-                Emissions not yet aggregated. Submit emissions first, then click below.
-                <button
-                  onClick={doAggregate}
-                  disabled={aggregating || ctx.facilityIds.length === 0}
-                  className="ml-3 inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 px-3 py-1 text-[11px] font-semibold text-amber-400 transition hover:bg-amber-500/10 disabled:opacity-50"
-                >
-                  {aggregating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
-                  Aggregate
-                </button>
-              </div>
-            </div>
-          )}
-          {noCap && (
-            <div className="mt-3 flex items-start gap-3 rounded-lg border border-sky-500/30 bg-sky-500/5 p-4">
-              <Info className="mt-0.5 h-4 w-4 flex-none text-sky-400" />
-              <p className="text-[13px] text-foreground/75">
-                <span className="font-semibold text-sky-400">Admin action needed: </span>
-                No encrypted cap has been set for your address yet. The regulator must call{" "}
-                <code className="rounded bg-foreground/10 px-1 font-mono text-[11px]">setCap</code> +{" "}
-                <code className="rounded bg-foreground/10 px-1 font-mono text-[11px]">grantCheckAccess</code> from the Admin panel.
-              </p>
+          {showRegulatory && (
+            <div className="mt-5">
+              <RegulatoryAwaitingPanel />
             </div>
           )}
 
-          <button
-            onClick={run}
-            disabled={step === 1 || step === 2 || !ctx.address || !canRun}
-            className="mt-5 inline-flex items-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background transition hover:bg-foreground/90 disabled:opacity-60"
-          >
-            {step === 1 || step === 2 ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-            {step === 4 ? "Re-run Compliance Check" : "Run Compliance Check"}
-          </button>
+          {noTotal && !showRegulatory && (
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-5 rounded-lg border border-amber-500/25 bg-amber-500/5 p-4"
+            >
+              <p className="text-[13px] text-foreground/75">
+                <span className="font-semibold text-amber-400">Next step: </span>
+                Aggregate your facility reports into a single encrypted company total.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  from="/dashboard"
+                  to="."
+                  search={{ view: "submit" }}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-foreground/20 px-3 py-1.5 text-[11px] font-semibold transition hover:border-emerald"
+                >
+                  Go to Submit Emissions
+                </Link>
+                <button
+                  onClick={doAggregate}
+                  disabled={aggregating || !ctx.canAggregate}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 px-3 py-1 text-[11px] font-semibold text-amber-400 transition hover:bg-amber-500/10 disabled:opacity-50"
+                >
+                  {aggregating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+                  Aggregate here
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          <div className="mt-5">
+          <GatedAction gate={runGate}>
+            <button
+              onClick={run}
+              disabled={!runGate.allowed || !ctx.address}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background transition hover:bg-foreground/90 disabled:opacity-60"
+            >
+              {step === 1 || step === 2 ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              {step === 4 ? "Re-run Compliance Check" : "Run Compliance Check"}
+            </button>
+          </GatedAction>
+          </div>
           <div className="mt-3">{yearInput}</div>
 
           <FHEStepper ctx={ctx} />
@@ -1604,9 +1601,9 @@ function ComplianceCheck({
                     <p className="font-mono text-[11px] text-foreground/50">
                       {ctx.hasComplianceResult
                         ? awaitingAclSync
-                          ? "ebool · syncing decrypt access…"
-                          : "ebool · ready to decrypt"
-                        : "no result yet — run check"}
+                          ? "Securing private access…"
+                          : "Private result ready"
+                        : "Awaiting compliance verification"}
                     </p>
                   </motion.div>
                 ) : decrypted ? (
@@ -1645,23 +1642,18 @@ function ComplianceCheck({
               </AnimatePresence>
             </div>
 
-            <button
-              disabled={!decryptReady || decrypting}
-              onClick={decrypt}
-              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full border border-foreground/25 bg-foreground/[0.04] px-6 py-3 text-[13px] font-semibold text-foreground transition hover:border-emerald hover:text-emerald disabled:opacity-50"
-            >
-              {decrypting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlock className="h-4 w-4" />}
-              Decrypt My Status
-            </button>
-
-            <p className="mt-3 font-mono text-[11px] text-foreground/50">
-              handle:{" "}
-              {isInitializedCtHandle(ctx.complianceHandle)
-                ? shortHandle(ctx.complianceHandle)
-                : ctx.complianceExists
-                  ? "invalid (check contract env)"
-                  : "none — run check with this wallet"}
-            </p>
+            <div className="mt-5">
+              <GatedAction gate={decryptGate}>
+                <button
+                  disabled={!decryptGate.allowed}
+                  onClick={decrypt}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-foreground/25 bg-foreground/[0.04] px-6 py-3 text-[13px] font-semibold text-foreground transition hover:border-emerald hover:text-emerald disabled:opacity-50"
+                >
+                  {decrypting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlock className="h-4 w-4" />}
+                  Decrypt My Status
+                </button>
+              </GatedAction>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-foreground/10 bg-surface p-7">
@@ -1669,9 +1661,9 @@ function ComplianceCheck({
               <Eye className="h-3.5 w-3.5 text-blue-info" /> Public settlement
             </div>
             <p className="mt-3 text-[13.5px] leading-relaxed text-foreground/70">
-              The regulator can decrypt the boolean result and publish it on-chain
-              via <span className="font-mono text-emerald">FHE.publishDecryptResult</span>.
-              Anyone may then read the boolean — values stay sealed forever.
+              After you view your private result, your regulator may publish an official
+              settlement. Only the pass/fail outcome becomes public—your emissions and cap
+              values remain encrypted.
             </p>
             <div className="mt-3">
               {settledStatus ? (
@@ -1704,6 +1696,7 @@ function AuditAccess({
   reportingYear,
 }: { ctx: ReturnType<typeof useCovertMrv> } & YearProps) {
   const publicClient = usePublicClient();
+  const auditGate = getActionGate(ctx, "grant_audit");
   const [addr, setAddr] = useState("");
   const [hrs, setHrs] = useState("48");
   const [grants, setGrants] = useState<Grant[]>([]);
@@ -1778,7 +1771,7 @@ function AuditAccess({
       ]);
       setAddr("");
     } catch (e) {
-      setError((e as Error).message);
+      setError(translateUserError(e));
     } finally {
       setPending(false);
     }
@@ -1789,7 +1782,7 @@ function AuditAccess({
       await ctx.revokeAuditAccess(g.auditor);
       persist(grants.map((x) => (x.auditor === g.auditor ? { ...x, active: false } : x)));
     } catch (e) {
-      setError((e as Error).message);
+      setError(translateUserError(e));
     }
   }
 
@@ -1841,14 +1834,18 @@ function AuditAccess({
           {error && (
             <p className="mt-3 font-mono text-[12px] text-destructive">{error}</p>
           )}
-          <button
-            type="submit"
-            disabled={pending || !ctx.companyTotalHandle}
-            className="mt-6 inline-flex items-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background transition hover:bg-foreground/90 disabled:opacity-60"
-          >
-            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-            Issue Audit Permit
-          </button>
+          <div className="mt-6">
+            <GatedAction gate={auditGate}>
+              <button
+                type="submit"
+                disabled={pending || !auditGate.allowed}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background transition hover:bg-foreground/90 disabled:opacity-60"
+              >
+                {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                Issue Audit Permit
+              </button>
+            </GatedAction>
+          </div>
           {!ctx.companyTotalHandle && (
             <p className="mt-3 font-mono text-[11px] text-amber-warn">
               Aggregate your facilities first — there is no encrypted total to share yet.
@@ -2124,6 +2121,7 @@ function CertificateView({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const settled = ctx.settled?.[0] ?? false;
   const compliant = ctx.settled?.[1] ?? false;
   const hasCert = settled && ctx.certificateBalance > 0n;
+  const certGate = getActionGate(ctx, "download_certificate");
 
   function downloadPdf() {
     const company = ctx.address ?? "0x???";
@@ -2180,20 +2178,36 @@ function CertificateView({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
           />
         </div>
 
+        <div className="mb-6">
+          <ComplianceJourneyCard ctx={ctx} compact />
+        </div>
+
         {!settled && (
-          <div className="rounded-2xl border border-amber-warn/30 bg-amber-warn/5 p-8 text-center">
-            <Clock className="mx-auto h-10 w-10 text-amber-warn/60" />
-            <p className="mt-4 font-mono text-[13px] text-foreground/65">
-              No compliance result settled yet.
-            </p>
-            <p className="mt-1 text-[12px] text-foreground/45">
-              Complete a compliance check and have the regulator call{" "}
-              <code className="rounded bg-foreground/10 px-1 font-mono text-[11px]">
-                settleCompliance
-              </code>
-              .
-            </p>
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border border-amber-warn/25 bg-amber-warn/5 p-8"
+          >
+            <div className="flex flex-col items-center text-center">
+              <Clock className="h-10 w-10 text-amber-warn/70" />
+              <p className="mt-4 text-[15px] font-semibold text-foreground">Certificate not yet available</p>
+              <p className="mt-2 max-w-md text-[13px] leading-relaxed text-foreground/65">
+                {certGate.reason}
+              </p>
+              {certGate.hint && (
+                <p className="mt-2 text-[12px] text-foreground/50">{certGate.hint}</p>
+              )}
+              <Link
+                from="/dashboard"
+                to="."
+                search={{ view: "check" }}
+                className="mt-5 inline-flex items-center gap-2 rounded-full border border-foreground/20 px-5 py-2.5 text-[12px] font-semibold transition hover:border-emerald"
+              >
+                Open Compliance Check
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </motion.div>
         )}
 
         {settled && (
@@ -2372,7 +2386,7 @@ function RoleBadge({
 
 /* -------------------- Supply Chain -------------------- */
 
-function SupplyChainView() {
+function SupplyChainView({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const sc = useSupplyChain();
   const publicClient = usePublicClient();
   const [sku, setSku] = useState("");
@@ -2391,15 +2405,36 @@ function SupplyChainView() {
       .filter((s) => isAddress(s)) as `0x${string}`[];
   }, [suppliers]);
 
+  const submitGate = getActionGate(ctx, "supply_submit_factor", {
+    supplyRole: sc.role,
+    hasSku: !!sku && !!factor,
+  });
+  const computeGate = getActionGate(ctx, "supply_compute", {
+    supplyRole: sc.role,
+    hasSku: !!sku,
+    hasSuppliers: supplierList.length > 0,
+  });
+  const classifyGate = getActionGate(ctx, "supply_classify", {
+    supplyRole: sc.role,
+    hasSku: !!sku,
+    hasSuppliers: supplierList.length > 0,
+  });
+  const thresholdGate = getActionGate(ctx, "supply_threshold", {
+    supplyRole: sc.role,
+    hasSku: !!sku,
+    hasSuppliers: supplierList.length > 0,
+    hasThreshold: !!threshold,
+  });
+
   async function run(action: () => Promise<`0x${string}`>, label: string) {
     try {
       setPending(label);
       setMsg(null);
       const h = await action();
       setTxHash(h);
-      setMsg({ tone: "ok", text: `${label} submitted: ${shortHandle(h)}` });
+      setMsg({ tone: "ok", text: `${label} completed successfully.` });
     } catch (e) {
-      setMsg({ tone: "err", text: (e as Error).message });
+      setMsg({ tone: "err", text: translateUserError(e) });
     } finally {
       setPending(null);
     }
@@ -2459,10 +2494,16 @@ function SupplyChainView() {
               Register as Emitter on SupplierAttest first
             </button>
           )}
-          <button type="submit" disabled={!!pending || sc.fheWorking} className="inline-flex items-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background disabled:opacity-60">
-            {pending === "submitFactor" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            Submit Factor
-          </button>
+          <GatedAction gate={submitGate}>
+            <button
+              type="submit"
+              disabled={!!pending || sc.fheWorking || !submitGate.allowed}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background disabled:opacity-60"
+            >
+              {pending === "submitFactor" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              Submit Factor
+            </button>
+          </GatedAction>
         </form>
 
         <div className="rounded-2xl border border-foreground/10 bg-surface p-8 space-y-5">
@@ -2476,39 +2517,48 @@ function SupplyChainView() {
             <textarea value={suppliers} onChange={(e) => setSuppliers(e.target.value)} placeholder="0x..., 0x..." rows={3} className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
           </Field>
           <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              disabled={!!pending || !sku || supplierList.length === 0}
-              onClick={() => void run(() => sc.computeFootprint(sku, supplierList), "computeFootprint")}
-              className="inline-flex items-center gap-2 rounded-full border border-foreground/20 px-5 py-2.5 text-[12px] font-semibold disabled:opacity-60"
-            >
-              Compute Total
-            </button>
-            <button
-              type="button"
-              disabled={!!pending || !sku || supplierList.length === 0}
-              onClick={() => void run(() => sc.classifyBand(sku, supplierList), "classifyBand")}
-              className="inline-flex items-center gap-2 rounded-full border border-foreground/20 px-5 py-2.5 text-[12px] font-semibold disabled:opacity-60"
-            >
-              Classify Band
-            </button>
+            <GatedAction gate={computeGate} showHint={false}>
+              <button
+                type="button"
+                disabled={!!pending || !computeGate.allowed}
+                onClick={() => void run(() => sc.computeFootprint(sku, supplierList), "computeFootprint")}
+                className="inline-flex items-center gap-2 rounded-full border border-foreground/20 px-5 py-2.5 text-[12px] font-semibold disabled:opacity-60"
+              >
+                Compute Total
+              </button>
+            </GatedAction>
+            <GatedAction gate={classifyGate} showHint={false}>
+              <button
+                type="button"
+                disabled={!!pending || !classifyGate.allowed}
+                onClick={() => void run(() => sc.classifyBand(sku, supplierList), "classifyBand")}
+                className="inline-flex items-center gap-2 rounded-full border border-foreground/20 px-5 py-2.5 text-[12px] font-semibold disabled:opacity-60"
+              >
+                Classify Band
+              </button>
+            </GatedAction>
           </div>
+          {(!computeGate.allowed && computeGate.reason) && (
+            <p className="text-[12px] text-foreground/55">{computeGate.reason}</p>
+          )}
           <Field label="Threshold (tCO₂e) for double-blind check">
             <input value={threshold} onChange={(e) => setThreshold(e.target.value)} placeholder="e.g. 500" className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
           </Field>
-          <button
-            type="button"
-            disabled={!!pending || !sku || !threshold || supplierList.length === 0}
-            onClick={() =>
-              void run(
-                () => sc.checkThreshold(sku, supplierList, BigInt(threshold)),
-                "checkThreshold",
-              )
-            }
-            className="inline-flex items-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background disabled:opacity-60"
-          >
-            Check Threshold
-          </button>
+          <GatedAction gate={thresholdGate}>
+            <button
+              type="button"
+              disabled={!!pending || !thresholdGate.allowed}
+              onClick={() =>
+                void run(
+                  () => sc.checkThreshold(sku, supplierList, BigInt(threshold)),
+                  "checkThreshold",
+                )
+              }
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background disabled:opacity-60"
+            >
+              Check Threshold
+            </button>
+          </GatedAction>
         </div>
       </div>
       {msg && (
@@ -2527,7 +2577,7 @@ function SupplyChainView() {
 
 /* -------------------- Carbon Credits -------------------- */
 
-function CarbonCreditsView() {
+function CarbonCreditsView({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const credits = useCarbonCredits();
   const publicClient = usePublicClient();
   const [company, setCompany] = useState("");
@@ -2538,6 +2588,23 @@ function CarbonCreditsView() {
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
 
+  const issueGate = useMemo(
+    () => getActionGate(ctx, "issue_credits", { hasCompany: isAddress(company) }),
+    [ctx, company],
+  );
+  const decryptBalGate = useMemo(
+    () => getActionGate(ctx, "decrypt_credit_balance", { hasBalance: credits.hasBalance }),
+    [ctx, credits.hasBalance],
+  );
+  const retireGate = useMemo(
+    () =>
+      getActionGate(ctx, "retire_credits", {
+        hasBalance: credits.hasBalance,
+        hasRetireAmount: !!retireAmount,
+      }),
+    [ctx, credits.hasBalance, retireAmount],
+  );
+
   return (
     <>
       <PageHeader
@@ -2545,7 +2612,10 @@ function CarbonCreditsView() {
         title="Carbon Credits"
         desc="FHERC20 cCO2 encrypted carbon credit token. Compliant companies receive credits via FHE.select conditional minting. Retire credits with encrypted receipts."
       />
-      <div className="grid gap-6 p-10 lg:grid-cols-3">
+      <div className="px-10 pb-4">
+        <ComplianceJourneyCard ctx={ctx} compact />
+      </div>
+      <div className="grid gap-6 p-10 pt-0 lg:grid-cols-3">
         <div className="rounded-2xl border border-foreground/10 bg-surface p-8 space-y-5">
           <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">Issue Credits</p>
           <Field label="Company Address">
@@ -2554,64 +2624,65 @@ function CarbonCreditsView() {
           <Field label="Reporting Year">
             <input value={year} onChange={(e) => setYear(e.target.value)} className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
           </Field>
-          <button
-            type="button"
-            disabled={!!pending || !isAddress(company)}
-            onClick={async () => {
-              try {
-                setPending("issue");
-                setMsg(null);
-                const h = await credits.issueCredits(company as `0x${string}`, Number(year));
-                if (publicClient) {
-                  await publicClient.waitForTransactionReceipt({ hash: h });
+          <GatedAction gate={issueGate}>
+            <button
+              type="button"
+              disabled={!!pending || !issueGate.allowed}
+              onClick={async () => {
+                try {
+                  setPending("issue");
+                  setMsg(null);
+                  const h = await credits.issueCredits(company as `0x${string}`, Number(year));
+                  if (publicClient) {
+                    await publicClient.waitForTransactionReceipt({ hash: h });
+                  }
+                  setTxHash(h);
+                  setMsg({ tone: "ok", text: "Credits issued successfully." });
+                  await credits.refetchBalance();
+                } catch (e) {
+                  const m = translateUserError(e);
+                  if (m.includes("already issued")) {
+                    setMsg({ tone: "ok", text: m });
+                  } else {
+                    setMsg({ tone: "err", text: m });
+                  }
+                } finally {
+                  setPending(null);
                 }
-                setTxHash(h);
-                setMsg({ tone: "ok", text: `Credits issued: ${shortHandle(h)}` });
-                await credits.refetchBalance();
-              } catch (e) {
-                const m = (e as Error).message ?? String(e);
-                if (m.includes("Credits already issued")) {
-                  setMsg({ tone: "ok", text: "Credits already issued for this company and year." });
-                } else {
-                  setMsg({ tone: "err", text: m });
-                }
-              } finally {
-                setPending(null);
-              }
-            }}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background disabled:opacity-60"
-          >
-            {pending === "issue" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-            Issue Credits
-          </button>
-          <p className="text-[12px] text-foreground/55">
-            Requires prior checkCompliance for the company and year. Re-issue reverts cleanly.
-          </p>
+              }}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background disabled:opacity-60"
+            >
+              {pending === "issue" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+              Issue Credits
+            </button>
+          </GatedAction>
         </div>
 
         <div className="rounded-2xl border border-foreground/10 bg-surface p-8 space-y-5">
           <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">Your Balance</p>
           <p className="font-display text-3xl">{credits.hasBalance ? "encrypted" : "—"}</p>
           <p className="font-mono text-[11px] text-foreground/45">Indicator: {String(credits.balanceIndicator)}</p>
-          <button
-            type="button"
-            disabled={!!pending || !credits.hasBalance}
-            onClick={async () => {
-              try {
-                setPending("decrypt");
-                const v = await credits.decryptBalance();
-                setDecryptedBal(v.toString());
-              } catch (e) {
-                setMsg({ tone: "err", text: (e as Error).message });
-              } finally {
-                setPending(null);
-              }
-            }}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-emerald/40 px-6 py-3 text-[13px] font-semibold text-emerald disabled:opacity-60"
-          >
-            {pending === "decrypt" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlock className="h-4 w-4" />}
-            Decrypt Balance
-          </button>
+          <GatedAction gate={decryptBalGate}>
+            <button
+              type="button"
+              disabled={!!pending || !decryptBalGate.allowed}
+              onClick={async () => {
+                try {
+                  setPending("decrypt");
+                  const v = await credits.decryptBalance();
+                  setDecryptedBal(v.toString());
+                } catch (e) {
+                  setMsg({ tone: "err", text: translateUserError(e) });
+                } finally {
+                  setPending(null);
+                }
+              }}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-emerald/40 px-6 py-3 text-[13px] font-semibold text-emerald disabled:opacity-60"
+            >
+              {pending === "decrypt" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlock className="h-4 w-4" />}
+              Decrypt Balance
+            </button>
+          </GatedAction>
           {decryptedBal && (
             <p className="font-mono text-[12px] text-emerald">Decrypted: {decryptedBal} base units</p>
           )}
@@ -2627,28 +2698,30 @@ function CarbonCreditsView() {
               Register as Emitter first
             </button>
           )}
-          <button
-            type="button"
-            disabled={!!pending || !retireAmount}
-            onClick={async () => {
-              try {
-                setPending("retire");
-                setMsg(null);
-                const { hash } = await credits.retireCredits(BigInt(retireAmount), Number(year));
-                setTxHash(hash);
-                setMsg({ tone: "ok", text: `Retired: ${shortHandle(hash)}` });
-                credits.refetchBalance();
-              } catch (e) {
-                setMsg({ tone: "err", text: (e as Error).message });
-              } finally {
-                setPending(null);
-              }
-            }}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background disabled:opacity-60"
-          >
-            {pending === "retire" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-            Retire Credits
-          </button>
+          <GatedAction gate={retireGate}>
+            <button
+              type="button"
+              disabled={!!pending || !retireGate.allowed}
+              onClick={async () => {
+                try {
+                  setPending("retire");
+                  setMsg(null);
+                  const { hash } = await credits.retireCredits(BigInt(retireAmount), Number(year));
+                  setTxHash(hash);
+                  setMsg({ tone: "ok", text: "Credits retired successfully." });
+                  credits.refetchBalance();
+                } catch (e) {
+                  setMsg({ tone: "err", text: translateUserError(e) });
+                } finally {
+                  setPending(null);
+                }
+              }}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background disabled:opacity-60"
+            >
+              {pending === "retire" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Retire Credits
+            </button>
+          </GatedAction>
         </div>
       </div>
       {msg && (

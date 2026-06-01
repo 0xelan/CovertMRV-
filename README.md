@@ -17,15 +17,16 @@
 2. [What CovertMRV is](#what-covertmrv-is)
 3. [How FHE works in this project (not hand-wavy)](#how-fhe-works-in-this-project-not-hand-wavy)
 4. [System architecture](#system-architecture)
-5. [End-to-end flows](#end-to-end-flows)
-6. [Disclosure model & roles](#disclosure-model--roles)
-7. [Deployed contracts](#deployed-contracts-arbitrum-sepolia)
-8. [Features](#features)
-9. [Tech stack](#tech-stack)
-10. [Quick start](#quick-start)
-11. [Testing](#testing)
-12. [Production / Vercel](#vercel--production-environment)
-13. [License](#license)
+5. [Compliance journey (dashboard UX)](#compliance-journey-dashboard-ux)
+6. [End-to-end flows](#end-to-end-flows)
+7. [Disclosure model & roles](#disclosure-model--roles)
+8. [Deployed contracts](#deployed-contracts-arbitrum-sepolia)
+9. [Features](#features)
+10. [Tech stack](#tech-stack)
+11. [Quick start](#quick-start)
+12. [Testing](#testing)
+13. [Production / Vercel](#vercel--production-environment)
+14. [License](#license)
 
 ---
 
@@ -185,24 +186,107 @@ Public mappings that leaked metadata were made **private**; the UI scans `getFac
 
 ---
 
+## Compliance journey (dashboard UX)
+
+The dashboard is a **guided regulatory workflow**, not a broken form. A **Compliance Journey** card (Overview, Compliance Check, Certificate, Carbon Credits) shows where you are. Disabled buttons always include a **plain-language reason**—never raw contract reverts.
+
+### Journey steps (emitter path)
+
+| Step | Dashboard label | On-chain meaning | Who acts |
+|------|-----------------|------------------|----------|
+| 1 | Registered as Emitter | `roleOf(wallet) == EMITTER` on CapRegistry | **You** — Overview → Register as Emitter |
+| 2 | Emissions Submitted | `getFacilityCount(company, year) > 0` | **You** — Submit Emissions tab |
+| 3 | Total Aggregated | `getCompanyTotal(company, year)` is initialized | **You** — Aggregate Total (after ≥1 facility) |
+| 4 | Waiting for Regulator Cap | Encrypted cap + CapCheck read access | **Regulator** — `setCap` + `grantCheckAccess` |
+| 5 | Waiting for Compliance Check | `checkCompliance` not run yet for this year | **You** — Compliance Check → Run |
+| 6 | Ready to Decrypt | `ebool` stored; private decrypt via CoFHE permit | **You** — Decrypt My Status |
+| 7 | Certificate Eligible | Regulator `settleCompliance` + NFT minted | **Regulator** settles; **you** download cert |
+
+The **current** step is highlighted with animation. Earlier steps show ✓; later steps show ⏳. This is intentional waiting—especially step 4—**not a system error**.
+
+### When the regulator cap is missing
+
+After aggregation, the Compliance Check tab shows **Awaiting Regulatory Configuration**:
+
+> Your emissions have been securely submitted and aggregated. Before compliance verification can begin, the regulator must assign an encrypted emissions cap and authorize compliance checks for your organization.
+
+**Run Compliance Check** stays disabled with: *“Unavailable until an encrypted cap is assigned by the regulator.”*
+
+### Console tabs — what each does
+
+| Tab | Purpose | Typical prerequisites |
+|-----|---------|------------------------|
+| **Overview** | Registration card, journey (compact), company stats, contract links | Wallet connected on Arb Sepolia |
+| **Submit Emissions** | Encrypt facility tonnes + ISO scope client-side; batch submit; aggregate | EMITTER role; reporting year matches submissions |
+| **Compliance Check** | Full journey card; run encrypted `total ≤ cap`; decrypt private pass/fail | Aggregated total + regulator cap for that year |
+| **Audit Access** | Grant auditor decrypt on **aggregate only** (time-bounded UI + `FHE.allow`) | Aggregated total exists |
+| **Disclosure Console** | Inspect handles; decrypt what your wallet is allowed to see | At least one encrypted handle |
+| **Certificate** | Download statement + view NFT after public settlement | Compliance check done + regulator settlement |
+| **Supply Chain** | Supplier factors → footprint → band → threshold (separate registry) | Register on **SupplierAttest** first |
+| **Carbon Credits** | Issue / decrypt / retire encrypted `cCO2` | Compliance check exists for company/year |
+
+### Why common actions are disabled (UX copy)
+
+| Action | Disabled because |
+|--------|------------------|
+| Run Compliance Check | Not registered, no aggregate, or **no encrypted cap yet** |
+| Decrypt My Status | No compliance result yet, or ACL still syncing after check tx |
+| Download Certificate | Verification or **regulator settlement** not complete |
+| Issue Audit Permit | Company total not aggregated yet |
+| Issue Credits | No compliance check for that company/year |
+| Decrypt Balance | Credits not issued to wallet yet |
+| Supply chain compute | SKU, supplier addresses, or SupplierAttest registration missing |
+
+Implementation: `frontend/src/lib/compliance-journey.ts` (`computeComplianceJourney`, `getActionGate`) and `frontend/src/lib/user-facing-errors.ts` (`translateUserError`).
+
+### Regulator / admin operations (CLI)
+
+The deployer wallet (`CapRegistry` owner) configures caps and settlement. Emitters use the dashboard; regulators often use Hardhat:
+
+```bash
+# Encrypted cap + grant CapCheck read access (after emitter has aggregated)
+npx hardhat covertmrv:set-cap --network arb-sepolia \
+  --company 0xYourEmitterAddress --cap 10000 --year 2026
+
+# Decrypt-for-tx + public settlement + certificate NFT
+npx hardhat covertmrv:settle --network arb-sepolia \
+  --company 0xYourEmitterAddress --year 2026
+
+# On-chain audit for a wallet/year
+npx hardhat covertmrv:audit --network arb-sepolia \
+  --company 0xYourEmitterAddress --year 2026
+```
+
+Contract owner can also use the **Regulator / Admin** panel on Overview when connected with the owner wallet.
+
+### Period keys (reporting year)
+
+Totals, caps, compliance results, and certificates are keyed by **`(company, reportingYear)`**. Always use the same year in Submit, Aggregate, Check, and regulator CLI flags. Facility tracking in the UI is scoped per year (`localStorage` + on-chain `getFacilityCount`).
+
+---
+
 ## End-to-end flows
 
-### 1. First-time emitter (dashboard Overview)
+### 1. First-time emitter (full path)
 
-1. Connect wallet on https://covert-mrv.vercel.app/dashboard  
-2. **Register as Emitter** — prominent card on Overview calls `CapRegistry.registerAsEmitter()` (self-service, no admin)  
-3. Regulator/admin runs CLI `covertmrv:set-cap` for encrypted cap + `grantCheckAccess` on CapCheck  
-4. **Submit Emissions** — encrypt per facility, `submitEmissions`  
-5. **Aggregate** — `aggregateTotal()` (homomorphic sum)  
-6. **Check Compliance** — `CapCheck.checkCompliance` → decrypt `ebool` in wallet  
-7. Optional: **Audit grant** — `grantAuditAccessToTotal(auditor, durationSec)`  
-8. Admin: **settleCompliance** → public boolean + ComplianceCertificate NFT  
+1. Connect wallet → https://covert-mrv.vercel.app/dashboard  
+2. **Overview** → **Register as Emitter** (`CapRegistry.registerAsEmitter`)  
+3. **Submit Emissions** → one or more facilities (encrypted `InEuint64` + `InEuint8` scope)  
+4. **Aggregate Total** → homomorphic sum into `companyTotals[you][year]`  
+5. **Regulator** → `covertmrv:set-cap` + automatic `grantCheckAccess` to CapCheck  
+6. **Compliance Check** → Run check → wait for confirmation → **Decrypt My Status** (COMPLIANT / NON-COMPLIANT)  
+7. Optional **Audit Access** → grant auditor address for 48h (UI timer + on-chain allow)  
+8. **Regulator** → `covertmrv:settle` → public boolean + ComplianceCertificate NFT  
+9. **Certificate** tab → download `.txt` attestation  
+10. Optional **Carbon Credits** → issue (after check), decrypt balance, retire  
+11. Optional **Supply Chain** → separate SupplierAttest registration and footprint flows  
 
 ### 2. Supply chain tab
 
-1. Supplier registers on `SupplierAttest`, `submitFactor(sku, encrypted factor)`  
-2. Product owner `computeFootprint` — reads factors via `FHE.allowTransient`  
-3. `classifyBand` / `checkThreshold` — encrypted band + threshold compare  
+1. **Register** on `SupplierAttest` (separate from CapRegistry EMITTER)  
+2. `submitFactor(sku, encrypted intensity)` for a reporting year  
+3. `computeFootprint` / `classifyBand` / `checkThreshold` with comma-separated supplier addresses  
+4. Results stored as encrypted handles; decrypt via hooks when permitted  
 
 ### 3. Enterprise API
 
@@ -275,7 +359,7 @@ Chain ID: `421614` · Deployer: [`0x2301CD93feC8249219b4b661b4bc81889b494De6`](h
 | Supply chain | Submit supplier factors, compute footprint, classify band, threshold check |
 | Credits | Conditional mint via `FHE.select`, encrypted balance, retirement receipts |
 | API | `POST /api/submit` — HMAC auth, server-side FHE batch submit |
-| UI | Overview registration card, live decrypt console, contract panel with Arbiscan links |
+| UI | Compliance Journey card, regulatory awaiting panel, gated actions with tooltips, user-friendly errors, Overview registration, disclosure console |
 
 ---
 
@@ -289,6 +373,7 @@ Chain ID: `421614` · Deployer: [`0x2301CD93feC8249219b4b661b4bc81889b494De6`](h
 | API | Vercel Node.js function, HMAC-SHA256 |
 | Network | Arbitrum Sepolia (421614) |
 | Testing | Hardhat + @cofhe/hardhat-plugin — **72 tests** |
+| UX | `compliance-journey.ts`, `ComplianceJourneyCard`, `GatedAction`, `translateUserError` |
 
 ---
 
@@ -308,6 +393,10 @@ npx hardhat deploy:full --network arb-sepolia
 
 # Verify wiring on-chain
 npx hardhat verify:deployment --network arb-sepolia
+
+# Regulator: cap + settlement (see Compliance journey above)
+npx hardhat covertmrv:set-cap --network arb-sepolia --company <EMITTER> --cap <TONNES> --year 2026
+npx hardhat covertmrv:settle --network arb-sepolia --company <EMITTER> --year 2026
 
 # Dev server
 cd frontend && npm run dev
