@@ -20,11 +20,14 @@ import { arbSepolia } from "@cofhe/sdk/chains";
 import type { Address, PublicClient, WalletClient } from "viem";
 
 const ARB_SEPOLIA_CHAIN_ID = 421614;
-const DECRYPT_ACL_RETRY_DELAYS_MS = [0, 2_000, 4_000, 8_000] as const;
+/** ACL propagation waits — reuse the same signed permit between attempts. */
+const DECRYPT_ACL_RETRY_DELAYS_MS = [0, 3_000, 6_000] as const;
 
 let client: CofheClient | null = null;
 let connectPromise: Promise<CofheClient> | null = null;
 let connectedAccount: string | null = null;
+/** Prevents concurrent decrypts (double-click / strict mode) from stacking wallet prompts. */
+let decryptInflightKey: string | null = null;
 
 export type StepCallback = (step: string) => void;
 
@@ -254,25 +257,39 @@ function isDecryptAccessError(err: unknown): boolean {
       ? err.message
       : (err as Error)?.message ?? String(err)
   ).toLowerCase();
+  // Do not treat every sealoutput failure as ACL — that caused permit refresh loops.
   return (
     msg.includes("403") ||
-    msg.includes("acl") ||
+    msg.includes("acl access") ||
+    msg.includes("notallowed") ||
     msg.includes("not allowed") ||
-    msg.includes("access denied") ||
-    msg.includes("sealoutput request failed")
+    msg.includes("access denied")
   );
 }
 
-async function refreshSelfPermit(
+function isPermitError(err: unknown): boolean {
+  if (!isCofheError(err)) return false;
+  return (
+    err.code === CofheErrorCode.PermitNotFound ||
+    err.code === CofheErrorCode.InvalidPermitData ||
+    err.code === CofheErrorCode.InvalidPermitDomain
+  );
+}
+
+/** One wallet signature max unless the stored permit is invalid. */
+async function ensureSelfPermit(
   c: CofheClient,
   publicClient: PublicClient,
   account: Address,
+  forceNew = false,
 ) {
   const chainId = await publicClient.getChainId();
-  try {
-    await c.permits.removeActivePermit(chainId, account);
-  } catch {
-    /* ignore */
+  if (forceNew) {
+    try {
+      await c.permits.removeActivePermit(chainId, account);
+    } catch {
+      /* ignore */
+    }
   }
   return c.permits.getOrCreateSelfPermit();
 }
@@ -328,43 +345,59 @@ async function decryptWithAclRetries(
     throw new Error(`Switch wallet to Arbitrum Sepolia (${ARB_SEPOLIA_CHAIN_ID})`);
   }
 
-  let lastErr: unknown;
-  for (let i = 0; i < DECRYPT_ACL_RETRY_DELAYS_MS.length; i++) {
-    const delay = DECRYPT_ACL_RETRY_DELAYS_MS[i];
-    if (delay > 0) {
-      onStep?.(`Waiting for ACL sync (${delay / 1000}s)`);
-      await sleep(delay);
-    }
-    try {
-      onStep?.(i === 0 ? "Creating permit" : "Refreshing permit");
-      const permit = await refreshSelfPermit(c, publicClient, account);
-      return await decryptForViewWithPermit(
-        c,
-        handle,
-        utype,
-        account,
-        chainId,
-        permit,
-        onStep,
-      );
-    } catch (err) {
-      lastErr = err;
-      if (!isDecryptAccessError(err) || i === DECRYPT_ACL_RETRY_DELAYS_MS.length - 1) {
-        break;
+  const lockKey = `${account.toLowerCase()}:${handle.toString(16)}`;
+  if (decryptInflightKey === lockKey) {
+    throw new Error("Decrypt already in progress — check your wallet.");
+  }
+  decryptInflightKey = lockKey;
+
+  try {
+    onStep?.("Creating permit");
+    let permit = await ensureSelfPermit(c, publicClient, account);
+
+    let lastErr: unknown;
+    for (let i = 0; i < DECRYPT_ACL_RETRY_DELAYS_MS.length; i++) {
+      const delay = DECRYPT_ACL_RETRY_DELAYS_MS[i];
+      if (delay > 0) {
+        onStep?.(`Waiting for ACL sync (${delay / 1000}s)`);
+        await sleep(delay);
+      }
+      try {
+        onStep?.(i === 0 ? "Decrypting" : `Decrypting (retry ${i})`);
+        return await decryptForViewWithPermit(
+          c,
+          handle,
+          utype,
+          account,
+          chainId,
+          permit,
+          onStep,
+        );
+      } catch (err) {
+        lastErr = err;
+        if (isPermitError(err)) {
+          onStep?.("Refreshing permit");
+          permit = await ensureSelfPermit(c, publicClient, account, true);
+        }
+        if (!isDecryptAccessError(err) || i === DECRYPT_ACL_RETRY_DELAYS_MS.length - 1) {
+          break;
+        }
       }
     }
-  }
 
-  if (utype === FheTypes.Bool && isDecryptAccessError(lastErr)) {
-    try {
-      const permit = await refreshSelfPermit(c, publicClient, account);
-      return await decryptBoolViaTx(c, handle, account, chainId, permit, onStep);
-    } catch (txErr) {
-      throw new Error(describeFheError(txErr) || describeFheError(lastErr));
+    if (utype === FheTypes.Bool && isDecryptAccessError(lastErr)) {
+      try {
+        onStep?.("Decrypting (alternate path)");
+        return await decryptBoolViaTx(c, handle, account, chainId, permit, onStep);
+      } catch (txErr) {
+        throw new Error(describeFheError(txErr) || describeFheError(lastErr));
+      }
     }
-  }
 
-  throw new Error(describeFheError(lastErr));
+    throw new Error(describeFheError(lastErr));
+  } finally {
+    if (decryptInflightKey === lockKey) decryptInflightKey = null;
+  }
 }
 
 function sessionCacheKey(account: string | undefined, handle: bigint, kind: string) {
@@ -486,7 +519,7 @@ export async function decryptForSettlement(
   const handle = typeof ctHash === "string" ? BigInt(ctHash) : ctHash;
   const chainId = await publicClient.getChainId();
   onStep?.("Creating permit");
-  const permit = await refreshSelfPermit(c, publicClient, account);
+  const permit = await ensureSelfPermit(c, publicClient, account);
   onStep?.("Decrypting for settlement");
   const result = (await c
     .decryptForTx(handle)

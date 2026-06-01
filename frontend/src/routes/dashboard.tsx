@@ -1224,6 +1224,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const tx = useWaitForTransactionReceipt({ hash });
   const handledCheckSuccess = useRef(false);
   const aggregateInFlight = useRef(false);
+  const decryptInFlight = useRef(false);
 
   useEffect(() => {
     if (tx.isLoading) setStep(2);
@@ -1309,6 +1310,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   }
 
   async function decrypt() {
+    if (decryptInFlight.current || decrypting) return;
     if (!ctx.hasComplianceResult) {
       setError("Run a compliance check first and wait for on-chain confirmation.");
       return;
@@ -1317,15 +1319,26 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
       setError("Wait for the compliance check transaction to confirm.");
       return;
     }
+    decryptInFlight.current = true;
     setError(null);
     setDecrypting(true);
     try {
       const v = await ctx.decryptBool(ctx.complianceHandle);
       setDecrypted(v);
     } catch (e) {
-      setError((e as Error).message);
+      const msg = (e as Error).message ?? String(e);
+      if (msg.includes("already in progress")) {
+        setError("Decrypt in progress — approve the permit in your wallet once.");
+      } else if (msg.includes("403") || msg.includes("access denied")) {
+        setError(
+          "Decrypt access denied. Run Compliance Check with this wallet, wait for confirmation, then try again. Each wallet needs its own check.",
+        );
+      } else {
+        setError(msg);
+      }
     } finally {
       setDecrypting(false);
+      decryptInFlight.current = false;
     }
   }
 
