@@ -1451,6 +1451,7 @@ type Grant = {
 };
 
 function AuditAccess({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
+  const publicClient = usePublicClient();
   const [addr, setAddr] = useState("");
   const [hrs, setHrs] = useState("48");
   const [grants, setGrants] = useState<Grant[]>([]);
@@ -1510,10 +1511,17 @@ function AuditAccess({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     const seconds = BigInt(Math.max(1, Math.floor(Number(hrs) * 3600)));
     try {
       setPending(true);
-      await ctx.grantAuditAccess(addr as `0x${string}`, seconds);
+      const hash = await ctx.grantAuditAccess(addr as `0x${string}`, seconds);
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash });
+      }
+      let active = true;
+      if (ctx.address) {
+        active = await ctx.checkAuditActive(ctx.address, addr as `0x${string}`);
+      }
       const expiry = BigInt(Math.floor(Date.now() / 1000)) + seconds;
       persist([
-        { auditor: addr as `0x${string}`, expiry, active: true },
+        { auditor: addr as `0x${string}`, expiry, active },
         ...grants.filter((g) => g.auditor.toLowerCase() !== addr.toLowerCase()),
       ]);
       setAddr("");
