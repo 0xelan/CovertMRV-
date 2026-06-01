@@ -807,7 +807,9 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const aggTx = useWaitForTransactionReceipt({ hash: aggHash });
   const batchTx = useWaitForTransactionReceipt({ hash: batchHash });
   const handledSubmitSuccess = useRef(false);
-  const autoAggregateStarted = useRef(false);
+  const [aggregatePrompt, setAggregatePrompt] = useState(false);
+  const aggregateInFlight = useRef(false);
+  const submitInFlight = useRef(false);
 
   const SCOPE_OPTIONS = [
     { value: 0, label: "Scope 1 — Direct", desc: "Combustion, process, fugitive" },
@@ -824,22 +826,17 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     handledSubmitSuccess.current = true;
     setStep(4);
     ctx.refetch();
-    if (!ctx.address || autoAggregateStarted.current) return;
-    autoAggregateStarted.current = true;
-    ctx
-      .aggregateTotal(ctx.address as `0x${string}`)
-      .then((h) => setAggHash(h))
-      .catch(() => {
-        autoAggregateStarted.current = false;
-      });
-  }, [tx.isSuccess, ctx.address, ctx.refetch, ctx.aggregateTotal]);
+    setAggregatePrompt(true);
+  }, [tx.isSuccess, ctx.refetch]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitInFlight.current || step === 1 || step === 2) return;
+    submitInFlight.current = true;
     setError(null);
     setHash(undefined);
+    setAggregatePrompt(false);
     handledSubmitSuccess.current = false;
-    autoAggregateStarted.current = false;
     setStep(1);
     try {
       if (!ctx.fheReady) throw new Error("FHE client not ready — wait a moment then retry");
@@ -848,17 +845,23 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     } catch (e) {
       setError((e as Error).message);
       setStep(0);
+    } finally {
+      submitInFlight.current = false;
     }
   }
 
   async function aggregate() {
-    if (!ctx.address) return;
+    if (!ctx.address || aggregateInFlight.current || aggTx.isLoading) return;
+    aggregateInFlight.current = true;
     setError(null);
+    setAggregatePrompt(false);
     try {
       const h = await ctx.aggregateTotal(ctx.address as `0x${string}`);
       setAggHash(h);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      aggregateInFlight.current = false;
     }
   }
 
@@ -970,6 +973,18 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             <p className="mt-4 inline-flex items-center gap-2 font-mono text-[12px] text-destructive">
               <AlertTriangle className="h-3.5 w-3.5" /> {error}
             </p>
+          )}
+
+          {aggregatePrompt && !ctx.hasAggregated && (
+            <div className="mt-4 flex items-start gap-3 rounded-lg border border-amber-500/35 bg-amber-500/5 p-4">
+              <Zap className="mt-0.5 h-4 w-4 flex-none text-amber-400" />
+              <div className="flex-1 text-[13px] text-foreground/75">
+                <span className="font-semibold text-amber-400">Next step (separate transaction): </span>
+                Emissions are saved on-chain. Click{" "}
+                <strong>Aggregate Total</strong> when you are ready — this is a second wallet
+                confirmation and is never sent automatically.
+              </div>
+            </div>
           )}
 
           <FHEStepper ctx={ctx} />

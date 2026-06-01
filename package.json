@@ -10,6 +10,7 @@
     "deploy:full:arb": "hardhat deploy:full --network arb-sepolia",
     "set-cap:arb": "hardhat covertmrv:set-cap --network arb-sepolia",
     "grant-role:arb": "hardhat covertmrv:grant-role --network arb-sepolia",
+    "audit:arb": "hardhat covertmrv:audit --network arb-sepolia",
     "clean": "hardhat clean"
   },
   "devDependencies": {
