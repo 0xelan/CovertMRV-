@@ -44,7 +44,7 @@ export function ProblemSection() {
     {
       icon: AlertTriangle,
       title: "Carbon Credits Lack Integrity",
-      body: "Verra suspended 90%+ of rainforest credits. Double-counting and inflated baselines plague a $2B+ voluntary market.",
+      body: "Integrity disputes, baseline manipulation, and double-counting risk have repeatedly undermined carbon credit confidence — even when companies act in good faith.",
     },
     {
       icon: EyeOff,
@@ -270,30 +270,34 @@ export function DisclosureSpectrum() {
 ========================================================= */
 export function MarketSection() {
   const stats = [
-    { v: "$909B", l: "Global carbon market size (World Bank 2024)" },
-    { v: "EU CBAM", l: "Mandatory carbon reporting launched 2026" },
-    { v: "$101M", l: "Raised by Persefoni for carbon accounting SaaS" },
-    {
-      v: "TradeLens",
-      l: "$100M+ IBM/Maersk venture failed because transparent ledgers exposed competitive data",
-    },
-    { v: "$10M+", l: "Fines for emissions misreporting" },
-    { v: "90%+", l: "Verra credits suspended over integrity concerns" },
+    { v: "8", l: "Deployed smart contracts (core + ScopeX + credits)" },
+    { v: "67", l: "Hardhat tests passing end-to-end" },
+    { v: "421614", l: "Arbitrum Sepolia chain ID (testnet)" },
+    { v: "@cofhe/sdk", l: "Client-side encryption (0.5.2) + tfhe 1.5.3" },
+    { v: "ISO 14064", l: "Scope 1/2/3 stored as encrypted euint8" },
+    { v: "Selective", l: "Timed audit disclosure via on-chain ACL + permits" },
   ];
   return (
     <section className="relative overflow-hidden border-t border-foreground/10 bg-surface py-32">
       <div className="absolute inset-0 grid-faint opacity-40" />
       <div className="relative mx-auto max-w-[1480px] px-6 md:px-10">
         <Reveal>
-          <SectionLabel index="04" label="Market Validation" />
+          <SectionLabel index="04" label="Production Reality" />
         </Reveal>
         <Reveal delay={0.05}>
           <h2 className="font-display mt-6 max-w-3xl text-4xl font-normal leading-[1.05] tracking-tight md:text-5xl">
-            This Market Is Real.
+            Shipping Code,
             <br />
-            It Is Massive. It Is{" "}
-            <span className="text-emerald">Mandatory.</span>
+            <span className="text-emerald">Not a Whitepaper.</span>
           </h2>
+        </Reveal>
+        <Reveal delay={0.1}>
+          <p className="mt-6 max-w-2xl text-[15px] leading-relaxed text-foreground/65">
+            CovertMRV is deployed on Arbitrum Sepolia with a complete privacy
+            stack: encrypted emissions, encrypted caps, encrypted compliance
+            boolean, timed audit grants, encrypted supply-chain rollups, and
+            encrypted carbon credit primitives.
+          </p>
         </Reveal>
 
         <StaggerGroup className="mt-16 grid gap-px overflow-hidden rounded-2xl border border-foreground/10 bg-foreground/10 md:grid-cols-2 lg:grid-cols-3">
@@ -416,7 +420,7 @@ export function ContractsSection() {
                   </p>
                   <div className="relative mt-8 flex items-center gap-2 font-mono text-[11px] text-foreground/40">
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald" />
-                    deployed · arbitrum sepolia
+                    arbitrum sepolia · chain 421614
                   </div>
                 </SpotlightCard>
               </Tilt>

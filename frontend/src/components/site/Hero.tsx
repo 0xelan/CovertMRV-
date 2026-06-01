@@ -37,13 +37,13 @@ export function Hero() {
         <div className="absolute left-0 top-[18%] h-px w-full bg-foreground/[0.06]" />
       </div>
 
-      {/* Floating ciphertext tokens */}
+      {/* Floating protocol markers (real, non-mock) */}
       <div className="pointer-events-none absolute inset-0 hidden lg:block">
         {[
-          { x: "12%", y: "28%", t: "euint64::0x44ab…aa01", delay: 0.6 },
-          { x: "78%", y: "62%", t: "FHE.add()", delay: 1.0 },
-          { x: "8%", y: "72%", t: "ebool::sealed", delay: 1.4 },
-          { x: "85%", y: "22%", t: "FHE.lte(t,c)", delay: 1.2 },
+          { x: "10%", y: "28%", t: "Arbitrum Sepolia · 421614", delay: 0.6 },
+          { x: "82%", y: "22%", t: "@cofhe/sdk 0.5.2", delay: 0.95 },
+          { x: "14%", y: "72%", t: "FHE.add() · FHE.lte() · FHE.select()", delay: 1.3 },
+          { x: "78%", y: "64%", t: "8 contracts · 67 tests", delay: 1.15 },
         ].map((c) => (
           <motion.span
             key={c.t}
@@ -73,7 +73,7 @@ export function Hero() {
                 Live
               </span>
               <span className="font-mono text-xs text-foreground/75">
-                ScopeX · 8 Contracts Live · Arbitrum Sepolia
+                8 contracts live · Arbitrum Sepolia · chain 421614
               </span>
               <span className="ml-1 inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-emerald" />
             </motion.div>
@@ -98,10 +98,9 @@ export function Hero() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.6, ease: EASE }}
             >
-              The first encrypted MRV protocol for climate compliance. Companies
-              prove they meet emissions caps without exposing facility data,
-              supplier secrets, or trade strategy. Built on Fully Homomorphic
-              Encryption.
+              CovertMRV is an FHE-powered Measurement, Reporting, and Verification
+              protocol for climate compliance. Facility emissions and caps stay
+              encrypted end-to-end; the chain computes the answer, not the data.
             </motion.p>
 
             <motion.div
@@ -138,23 +137,23 @@ export function Hero() {
             >
               <Sparkles className="h-3 w-3 text-emerald" />
               <span>
-                FHE.add() · FHE.lte() · FHE.select() — ISO 14064 + Scope 3 ScopeX · 8 contracts · 56 tests
+                FHE.add() · FHE.lte() · FHE.select() — ISO 14064 scopes · supply-chain factors · 8 contracts · 67 tests
               </span>
             </motion.div>
           </div>
 
           {/* Right: stat rail */}
           <div className="hidden flex-col gap-12 self-center lg:flex">
-            <Counter value="$909B" label="Global Carbon Market" />
-            <Counter value="56" label="Tests Passing" delay={120} />
+            <Counter value="421614" label="Chain ID" />
+            <Counter value="67" label="Tests Passing" delay={120} />
             <Counter value="8" label="Contracts Live" delay={240} />
           </div>
         </div>
 
         {/* Mobile stats */}
         <div className="mt-16 grid grid-cols-3 gap-6 lg:hidden">
-          <Counter value="$909B" label="Carbon Market" />
-          <Counter value="56" label="Tests" />
+          <Counter value="421614" label="Chain" />
+          <Counter value="67" label="Tests" />
           <Counter value="8" label="Contracts" />
         </div>
 
@@ -162,10 +161,10 @@ export function Hero() {
         <div className="mt-16 flex items-center justify-between border-t border-foreground/10 pt-5 font-mono text-[11px] text-foreground/45">
           <span className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald" />
-            00:01 / 00:07 · ENCRYPTED STREAM
+            privacy-first compliance · encrypted-by-default
           </span>
           <span className="hidden md:inline">
-            handle://0xa9f3…c7e1 · euint64 · CIPHERTEXT
+            facilities → totals → boolean · without revealing values
           </span>
           <span>scroll ↓</span>
         </div>

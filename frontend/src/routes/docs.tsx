@@ -55,7 +55,7 @@ function Docs() {
           <div className="flex items-center gap-4 font-mono text-[11px] uppercase tracking-[0.22em] text-foreground/45">
             <span className="text-emerald">DOCS</span>
             <span className="h-px w-12 bg-foreground/20" />
-          <span>v0.4.0 · ScopeX · Arbitrum Sepolia</span>
+            <span>v0.4 · 8 contracts · Arbitrum Sepolia</span>
           </div>
           <h1 className="font-display mt-6 max-w-3xl text-4xl font-normal leading-[1.05] tracking-tight md:text-6xl">
             Protocol
@@ -67,9 +67,11 @@ function Docs() {
             protocol for climate compliance, built on Fhenix CoFHE. This
             document describes the contracts, the cryptographic primitives, and
             the disclosure model.
-          </p>            <p className="mt-2 font-mono text-[12px] text-emerald/70">
-              SDK 0.5.2 · ComplianceCertificate NFT · Batch Submit · Reporting Year · Enterprise API · ISO 14064 Scope 1/2/3
-            </p>        </div>
+          </p>
+          <p className="mt-2 font-mono text-[12px] text-emerald/70">
+            SDK 0.5.2 · tfhe 1.5.3 · 67 tests · encrypted scopes (euint8) · timed audit grants · supply chain + credits
+          </p>
+        </div>
       </section>
 
       <div className="mx-auto grid max-w-[1480px] gap-12 px-6 py-16 md:px-10 lg:grid-cols-[240px_1fr]">
@@ -261,31 +263,31 @@ function Docs() {
 
           <Block id="architecture" title="Architecture">
             <p className="mb-6">
-              Three contracts coordinate. Five roles consume their outputs.
+              Eight contracts coordinate. Different roles consume different disclosures.
             </p>
             <pre className="overflow-x-auto rounded-xl border border-foreground/10 bg-surface p-6 font-mono text-[12.5px] leading-relaxed text-foreground/80">
 {`┌─────────────────────────────────────────────────────────────────┐
-│              CovertMRV Protocol v0.4  ·  ScopeX                 │
+│                   CovertMRV Protocol v0.4                        │
 └─────────────────────────────────────────────────────────────────┘
 
    client (browser / enterprise API)
    ──────────────────────────────────
-   @cofhe/sdk 0.5.2  ──encrypt──▶  euint64 ciphertext
+   @cofhe/sdk 0.5.2  ──encrypt──▶  euint64 + euint8 ciphertexts
                                          │
                                          ▼
    ┌──────────────────────────────────────────────────────────────┐
-   │  CapRegistry.sol  [0x4460Be641B40484bBD25231f594158531e84e108]│
-   │    • submitEmissions(id, eEmit, year, scope)                 │
-   │    • batchSubmitEmissions(ids[], eEmits[], year, scope)      │
+   │  CapRegistry.sol  [${CAP_REGISTRY_ADDRESS}]                   │
+   │    • submitEmissions(id, encTonnes, encScope, year)          │
+   │    • batchSubmitEmissions(ids[], encTonnes[], encScopes[], year) │
    │    • aggregateTotal()  →  FHE.add() across handles           │
    │    • setCap(eCap)       // encrypted regulatory cap          │
-   │    • enum Scope { SCOPE1, SCOPE2, SCOPE3 }  // ISO 14064     │
-   │    • getFacilityScope(company, id) → Scope                  │
+   │    • getFacilityCount(company)  // restricted (privacy)      │
+   │    • grantAuditAccessToTotal(auditor, ttl)  // timed allow() │
    └──────────────────────────────────────────────────────────────┘
                                          │
                                          ▼
    ┌──────────────────────────────────────────────────────────────┐
-   │  CapCheck.sol     [0x7E2cc776495bb4565C28F60E3a708a44314a2965]│
+   │  CapCheck.sol     [${CAP_CHECK_ADDRESS}]                      │
    │    • checkCompliance(company, year) → ebool = FHE.lte(t,c)  │
    │    • settleCompliance(company, bool, sig)                    │
    │      └─▶ ComplianceCertificate.mintCertificate()            │
@@ -293,15 +295,14 @@ function Docs() {
                                          │
                                          ▼
    ┌──────────────────────────────────────────────────────────────┐
-   │  ComplianceCertificate.sol [0xF91b8DDf2a4110A897204206714E5B90CAd2C8D5]│
+   │  ComplianceCertificate.sol [${COMPLIANCE_CERTIFICATE_ADDRESS}]│
    │    • ERC-721. tokenId = keccak256(company, year)             │
    │    • certificates[id] = {company, year, compliant, ts}      │
    └──────────────────────────────────────────────────────────────┘
                                          │
-   DisclosureACL (base)                  │
-     • grantAuditAccessToTotal(auditor, ttl)  FHE.allow()
-     • revokeAuditAccess(auditor)
-     • auditGrants[company][auditor] → (expiry, active)`}
+                     ScopeX + Credits (5 contracts)                │
+   SupplierAttest [${SUPPLIER_ATTEST_ADDRESS}]  →  ProductFootprint [${PRODUCT_FOOTPRINT_ADDRESS}]
+   cCO2 [${CCO2_ADDRESS}]  ← CreditIssuer [${CREDIT_ISSUER_ADDRESS}]  →  CreditRetire [${CREDIT_RETIRE_ADDRESS}]`}
             </pre>
           </Block>
 
@@ -337,7 +338,7 @@ function Docs() {
 
           <Block id="contracts" title="Smart Contract Reference">
             <p className="mb-6">
-              Two contracts deployed on Arbitrum Sepolia (chain ID 421614). Solidity 0.8.28, viaIR, cancun EVM.
+              All contracts are deployed on Arbitrum Sepolia (chain ID 421614). Solidity 0.8.28, viaIR, cancun EVM.
             </p>
             <div className="space-y-4">
               <ContractCard
@@ -346,13 +347,13 @@ function Docs() {
                 address={CAP_REGISTRY_ADDRESS}
                 fns={[
                   ["registerAsEmitter", "() → role granted"],
-                  ["submitEmissions", "(facilityId: uint256, e: InEuint64, year: uint256, scope: Scope) → void"],
-                  ["batchSubmitEmissions", "(ids: uint256[], es: InEuint64[], year: uint256, scope: Scope) → void"],
+                  ["submitEmissions", "(facilityId: uint256, encTonnes: InEuint64, encScope: InEuint8, year: uint256) → void"],
+                  ["batchSubmitEmissions", "(ids: uint256[], encTonnes: InEuint64[], encScopes: InEuint8[], year: uint256) → void"],
                   ["aggregateTotal", "(company: address) → void  // FHE.add()"],
                   ["setCap", "(company: address, e: InEuint64) → void  // admin"],
-                  ["getFacilityScope", "(company: address, facilityId: uint256) → Scope"],
                   ["getMyEmissions", "(facilityId: uint256) → euint64  // msg.sender"],
-                  ["getFacilityIds", "(company: address) → uint256[]"],
+                  ["getFacilityCount", "(company: address) → uint256  // restricted"],
+                  ["getFacilityScope", "(company: address, facilityId: uint256) → euint8  // encrypted"],
                 ]}
               />
               <ContractCard

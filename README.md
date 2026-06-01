@@ -21,7 +21,7 @@ Companies submit encrypted emissions with `@cofhe/sdk`. Contracts aggregate via 
 
 ## Deployed Contracts (Arbitrum Sepolia)
 
-Chain ID: `421614` · Deployer: [`0x2301CD93feC8249219b4b661b4bc81889b494De6`](https://sepolia.arbiscan.io/address/0x2301CD93feC8249219b4b661b4bc81889b494De6) · Deployed: **2026-06-02**
+Chain ID: `421614` · Deployer: [`0x2301CD93feC8249219b4b661b4bc81889b494De6`](https://sepolia.arbiscan.io/address/0x2301CD93feC8249219b4b661b4bc81889b494De6)
 
 ### Core compliance
 
