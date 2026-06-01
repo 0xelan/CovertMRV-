@@ -3,37 +3,56 @@
 
 export const CHAIN_ID = 421614;
 
-export const CAP_REGISTRY_ADDRESS =
-  (import.meta.env.VITE_CAP_REGISTRY_ADDRESS as `0x${string}` | undefined) ??
-  ("0xbc3dc391AfbE94BF55cedDF5Aa05dA8e5e73dD41" as `0x${string}`);
+const ADDR = /^0x[a-fA-F0-9]{40}$/;
 
-export const CAP_CHECK_ADDRESS =
-  (import.meta.env.VITE_CAP_CHECK_ADDRESS as `0x${string}` | undefined) ??
-  ("0x2d692212B3bA5c46a1e97d320eA198EaB65C846B" as `0x${string}`);
+/** Vercel often sets VITE_* to "" — empty string must fall back to baked-in deploy addresses. */
+function viteAddress(envKey: string, fallback: `0x${string}`): `0x${string}` {
+  const raw = import.meta.env[envKey] as string | undefined;
+  if (typeof raw === "string" && ADDR.test(raw.trim())) {
+    return raw.trim() as `0x${string}`;
+  }
+  return fallback;
+}
 
-export const COMPLIANCE_CERTIFICATE_ADDRESS =
-  (import.meta.env.VITE_COMPLIANCE_CERTIFICATE_ADDRESS as `0x${string}` | undefined) ??
-  ("0xe7A84b47fF5DE41F0C112256b659B14A33fab66e" as `0x${string}`);
+export const CAP_REGISTRY_ADDRESS = viteAddress(
+  "VITE_CAP_REGISTRY_ADDRESS",
+  "0xbc3dc391AfbE94BF55cedDF5Aa05dA8e5e73dD41",
+);
 
-export const SUPPLIER_ATTEST_ADDRESS =
-  (import.meta.env.VITE_SUPPLIER_ATTEST_ADDRESS as `0x${string}` | undefined) ??
-  ("0xBF5246DECC3C18F8c9A1B310DDF6CeeA0104980D" as `0x${string}`);
+export const CAP_CHECK_ADDRESS = viteAddress(
+  "VITE_CAP_CHECK_ADDRESS",
+  "0x2d692212B3bA5c46a1e97d320eA198EaB65C846B",
+);
 
-export const PRODUCT_FOOTPRINT_ADDRESS =
-  (import.meta.env.VITE_PRODUCT_FOOTPRINT_ADDRESS as `0x${string}` | undefined) ??
-  ("0x7B15F60d8252038281818e138426c834428f9152" as `0x${string}`);
+export const COMPLIANCE_CERTIFICATE_ADDRESS = viteAddress(
+  "VITE_COMPLIANCE_CERTIFICATE_ADDRESS",
+  "0xe7A84b47fF5DE41F0C112256b659B14A33fab66e",
+);
 
-export const CCO2_ADDRESS =
-  (import.meta.env.VITE_CCO2_ADDRESS as `0x${string}` | undefined) ??
-  ("0x794ebf1C753FA7DA424624B338cFE07697195670" as `0x${string}`);
+export const SUPPLIER_ATTEST_ADDRESS = viteAddress(
+  "VITE_SUPPLIER_ATTEST_ADDRESS",
+  "0xBF5246DECC3C18F8c9A1B310DDF6CeeA0104980D",
+);
 
-export const CREDIT_ISSUER_ADDRESS =
-  (import.meta.env.VITE_CREDIT_ISSUER_ADDRESS as `0x${string}` | undefined) ??
-  ("0xcb2a38D5Ac1c06345450b1564558da468e703Efb" as `0x${string}`);
+export const PRODUCT_FOOTPRINT_ADDRESS = viteAddress(
+  "VITE_PRODUCT_FOOTPRINT_ADDRESS",
+  "0x7B15F60d8252038281818e138426c834428f9152",
+);
 
-export const CREDIT_RETIRE_ADDRESS =
-  (import.meta.env.VITE_CREDIT_RETIRE_ADDRESS as `0x${string}` | undefined) ??
-  ("0x22930E042B2BE81eC4fcfe9C4e927533D44c9Aab" as `0x${string}`);
+export const CCO2_ADDRESS = viteAddress(
+  "VITE_CCO2_ADDRESS",
+  "0x794ebf1C753FA7DA424624B338cFE07697195670",
+);
+
+export const CREDIT_ISSUER_ADDRESS = viteAddress(
+  "VITE_CREDIT_ISSUER_ADDRESS",
+  "0xcb2a38D5Ac1c06345450b1564558da468e703Efb",
+);
+
+export const CREDIT_RETIRE_ADDRESS = viteAddress(
+  "VITE_CREDIT_RETIRE_ADDRESS",
+  "0x22930E042B2BE81eC4fcfe9C4e927533D44c9Aab",
+);
 
 export const CAP_REGISTRY_ABI = [
   {

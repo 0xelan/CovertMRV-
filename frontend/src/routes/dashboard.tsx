@@ -50,6 +50,7 @@ import {
   CREDIT_RETIRE_ADDRESS,
 } from "@/config/contracts";
 import { fmtTonnes, shortAddress, shortHandle, fmtCountdown } from "@/lib/format";
+import { isInitializedCtHandle } from "@/lib/ct-handle";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -595,10 +596,10 @@ function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
               <>
                 <Lock className="relative h-7 w-7 text-emerald" strokeWidth={1.4} />
                 <p className="font-display relative text-2xl font-normal tracking-tight">
-                  {ctx.complianceHandle ? "ENCRYPTED" : "NOT RUN"}
+                  {ctx.hasComplianceResult ? "ENCRYPTED" : "NOT RUN"}
                 </p>
                 <p className="font-mono relative text-[11px] text-foreground/50">
-                  {ctx.complianceHandle ? "ebool · awaiting decryption" : "no result yet"}
+                  {ctx.hasComplianceResult ? "ebool · awaiting decryption" : "no result yet"}
                 </p>
               </>
             )}
@@ -1245,7 +1246,10 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   // Existing on-chain results (page load / return visit) skip this gate.
   const awaitingAclSync = !!hash && step > 0 && step < 4;
   const decryptReady =
-    ctx.hasComplianceResult && !awaitingAclSync && !tx.isLoading;
+    ctx.hasComplianceResult &&
+    isInitializedCtHandle(ctx.complianceHandle) &&
+    !awaitingAclSync &&
+    !tx.isLoading;
 
   // Pre-flight: are both prerequisites met?
   const noTotal = !ctx.hasAggregated;
@@ -1311,8 +1315,16 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
 
   async function decrypt() {
     if (decryptInFlight.current || decrypting) return;
-    if (!ctx.hasComplianceResult) {
-      setError("Run a compliance check first and wait for on-chain confirmation.");
+    if (!ctx.hasComplianceResult || !isInitializedCtHandle(ctx.complianceHandle)) {
+      setError(
+        "No encrypted compliance result for this wallet. Run Compliance Check here, wait for confirmation, then decrypt.",
+      );
+      return;
+    }
+    if (ctx.complianceExists && !isInitializedCtHandle(ctx.complianceHandle)) {
+      setError(
+        "On-chain record exists but the ciphertext handle is empty — wrong CapCheck address in env or stale deployment. Re-run check after fixing VITE_CAP_CHECK_ADDRESS.",
+      );
       return;
     }
     if (tx.isLoading) {
@@ -1529,7 +1541,12 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             </button>
 
             <p className="mt-3 font-mono text-[11px] text-foreground/50">
-              handle: {shortHandle(ctx.complianceHandle)}
+              handle:{" "}
+              {isInitializedCtHandle(ctx.complianceHandle)
+                ? shortHandle(ctx.complianceHandle)
+                : ctx.complianceExists
+                  ? "invalid (check contract env)"
+                  : "none — run check with this wallet"}
             </p>
           </div>
 
@@ -1803,10 +1820,10 @@ function DisclosureConsole({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
 
   const handles: Handle[] = useMemo(() => {
     const h: Handle[] = [];
-    if (ctx.companyTotalHandle) {
+    if (isInitializedCtHandle(ctx.companyTotalHandle)) {
       h.push({ id: "company_total", type: "company aggregate", handle: ctx.companyTotalHandle, fheType: "uint64" });
     }
-    if (ctx.complianceHandle) {
+    if (isInitializedCtHandle(ctx.complianceHandle)) {
       h.push({ id: "compliance_result", type: "compliance result", handle: ctx.complianceHandle, fheType: "bool" });
     }
     return h;

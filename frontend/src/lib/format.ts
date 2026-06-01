@@ -1,3 +1,5 @@
+import { isInitializedCtHandle, parseCtHandle } from "@/lib/ct-handle";
+
 export function shortAddress(addr?: string | null, chars = 4): string {
   if (!addr) return "—";
   if (addr.length < 2 + chars * 2 + 1) return addr;
@@ -6,10 +8,9 @@ export function shortAddress(addr?: string | null, chars = 4): string {
 
 export function shortHandle(handle?: string | bigint | null): string {
   if (handle === null || handle === undefined) return "—";
-  const hex =
-    typeof handle === "bigint"
-      ? `0x${handle.toString(16).padStart(64, "0")}`
-      : handle.toString();
+  if (!isInitializedCtHandle(handle)) return "not initialized";
+  const n = parseCtHandle(handle);
+  const hex = `0x${n.toString(16).padStart(64, "0")}`;
   if (hex.length <= 14) return hex;
   return `${hex.slice(0, 8)}…${hex.slice(-6)}`;
 }

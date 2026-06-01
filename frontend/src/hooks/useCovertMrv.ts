@@ -45,10 +45,7 @@ import {
   recordSubmittedFacilityIds,
 } from "@/lib/submitted-facilities";
 import { useFHEStatus } from "./useFHEStatus";
-
-function isInitializedHandle(handle: bigint | undefined): boolean {
-  return handle !== undefined && handle !== 0n;
-}
+import { isInitializedCtHandle, parseCtHandle } from "@/lib/ct-handle";
 
 // Per-call gas limits tuned for Arbitrum Sepolia + CoFHE coprocessor.
 const GAS = {
@@ -154,6 +151,14 @@ export function useCovertMrv() {
     address: CAP_CHECK_ADDRESS,
     abi: CAP_CHECK_ABI,
     functionName: "getComplianceResult",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
+
+  const complianceRecord = useReadContract({
+    address: CAP_CHECK_ADDRESS,
+    abi: CAP_CHECK_ABI,
+    functionName: "complianceResults",
     args: address ? [address] : undefined,
     query: { enabled: !!address },
   });
@@ -420,8 +425,8 @@ export function useCovertMrv() {
   const settleCompliance = useCallback(
     async (company: `0x${string}`) => {
       const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
-      const handle = (complianceHandle.data ?? 0n) as bigint;
-      if (!handle)
+      const handle = parseCtHandle(complianceHandle.data);
+      if (!isInitializedCtHandle(handle))
         throw new Error("No compliance result yet — run a check first.");
       try {
         fhe.setStep("ENCRYPTING");
@@ -527,6 +532,7 @@ export function useCovertMrv() {
     void companyTotalHandle.refetch();
     void regulatoryCapHandle.refetch();
     void complianceHandle.refetch();
+    void complianceRecord.refetch();
     void settledStatus.refetch();
     void lastCheckedAt.refetch();
     void auditGrant.refetch();
@@ -537,6 +543,7 @@ export function useCovertMrv() {
     companyTotalHandle,
     regulatoryCapHandle,
     complianceHandle,
+    complianceRecord,
     settledStatus,
     lastCheckedAt,
     auditGrant,
@@ -554,18 +561,19 @@ export function useCovertMrv() {
     role: (myRole.data ?? 0) as number,
     facilityCount: Number(facilityCountRead.data ?? 0n),
     facilityIds: trackedFacilityIds,
-    companyTotalHandle: (companyTotalHandle.data ?? 0n) as bigint,
+    companyTotalHandle: parseCtHandle(companyTotalHandle.data),
     hasAggregated:
-      companyTotalHandle.isSuccess &&
-      isInitializedHandle(companyTotalHandle.data as bigint | undefined),
-    regulatoryCapHandle: (regulatoryCapHandle.data ?? 0n) as bigint,
+      companyTotalHandle.isSuccess && isInitializedCtHandle(companyTotalHandle.data),
+    regulatoryCapHandle: parseCtHandle(regulatoryCapHandle.data),
     hasCapSet:
-      regulatoryCapHandle.isSuccess &&
-      isInitializedHandle(regulatoryCapHandle.data as bigint | undefined),
-    complianceHandle: (complianceHandle.data ?? 0n) as bigint,
+      regulatoryCapHandle.isSuccess && isInitializedCtHandle(regulatoryCapHandle.data),
+    complianceHandle: parseCtHandle(complianceHandle.data),
+    complianceExists: Boolean(
+      complianceRecord.data && (complianceRecord.data as { exists: boolean }).exists,
+    ),
     hasComplianceResult:
-      complianceHandle.isSuccess &&
-      isInitializedHandle(complianceHandle.data as bigint | undefined),
+      Boolean(complianceRecord.data && (complianceRecord.data as { exists: boolean }).exists) &&
+      isInitializedCtHandle(complianceHandle.data),
     settled: settledStatus.data as readonly [boolean, boolean] | undefined,
     lastCheckedAt: (lastCheckedAt.data ?? 0n) as bigint,
     auditGrantExpiry: 0n,

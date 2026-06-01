@@ -18,6 +18,7 @@ import {
 } from "@cofhe/sdk";
 import { arbSepolia } from "@cofhe/sdk/chains";
 import type { Address, PublicClient, WalletClient } from "viem";
+import { isInitializedCtHandle, parseCtHandle } from "@/lib/ct-handle";
 
 const ARB_SEPOLIA_CHAIN_ID = 421614;
 /** ACL propagation waits — reuse the same signed permit between attempts. */
@@ -313,23 +314,12 @@ async function decryptForViewWithPermit(
     .execute();
 }
 
-async function decryptBoolViaTx(
-  c: CofheClient,
-  handle: bigint,
-  account: Address,
-  chainId: number,
-  permit: Awaited<ReturnType<CofheClient["permits"]["getOrCreateSelfPermit"]>>,
-  onStep?: StepCallback,
-): Promise<boolean> {
-  onStep?.("Decrypting (tx path)");
-  const { decryptedValue } = (await c
-    .decryptForTx(handle)
-    .setChainId(chainId)
-    .setAccount(account)
-    .withPermit(permit)
-    .set404RetryTimeout(15_000)
-    .execute()) as { decryptedValue: unknown };
-  return Boolean(Number(decryptedValue));
+function assertDecryptableHandle(handle: bigint): void {
+  if (!isInitializedCtHandle(handle)) {
+    throw new Error(
+      "No encrypted result on-chain for this wallet. Run Compliance Check with the connected wallet, wait for confirmation, then decrypt.",
+    );
+  }
 }
 
 async function decryptWithAclRetries(
@@ -385,15 +375,6 @@ async function decryptWithAclRetries(
       }
     }
 
-    if (utype === FheTypes.Bool && isDecryptAccessError(lastErr)) {
-      try {
-        onStep?.("Decrypting (alternate path)");
-        return await decryptBoolViaTx(c, handle, account, chainId, permit, onStep);
-      } catch (txErr) {
-        throw new Error(describeFheError(txErr) || describeFheError(lastErr));
-      }
-    }
-
     throw new Error(describeFheError(lastErr));
   } finally {
     if (decryptInflightKey === lockKey) decryptInflightKey = null;
@@ -419,7 +400,8 @@ export async function decryptUint64(
   onStep?: StepCallback,
 ): Promise<bigint> {
   const c = await getFheClient(publicClient, walletClient, account);
-  const handle = typeof ctHash === "string" ? BigInt(ctHash) : ctHash;
+  const handle = parseCtHandle(ctHash);
+  assertDecryptableHandle(handle);
   const cacheKey = sessionCacheKey(account, handle, "u64");
 
   if (typeof window !== "undefined") {
@@ -465,7 +447,8 @@ export async function decryptBool(
   onStep?: StepCallback,
 ): Promise<boolean> {
   const c = await getFheClient(publicClient, walletClient, account);
-  const handle = typeof ctHash === "string" ? BigInt(ctHash) : ctHash;
+  const handle = parseCtHandle(ctHash);
+  assertDecryptableHandle(handle);
   const cacheKey = sessionCacheKey(account, handle, "bool");
 
   if (typeof window !== "undefined") {
@@ -516,7 +499,8 @@ export async function decryptForSettlement(
   onStep?: StepCallback,
 ): Promise<{ decryptedValue: unknown; signature: `0x${string}` }> {
   const c = await getFheClient(publicClient, walletClient, account);
-  const handle = typeof ctHash === "string" ? BigInt(ctHash) : ctHash;
+  const handle = parseCtHandle(ctHash);
+  assertDecryptableHandle(handle);
   const chainId = await publicClient.getChainId();
   onStep?.("Creating permit");
   const permit = await ensureSelfPermit(c, publicClient, account);
