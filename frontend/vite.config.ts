@@ -1,17 +1,30 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
-/** Dev server must serve .wasm with the correct MIME type for tfhe-rs. */
-function wasmContentTypePlugin(): Plugin {
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const TFHE_WASM = path.resolve(__dirname, "node_modules/tfhe/tfhe_bg.wasm");
+
+/** Serve tfhe_bg.wasm with correct MIME type — Vite prebundle breaks relative wasm URLs. */
+function tfheWasmPlugin(): Plugin {
   return {
-    name: "wasm-content-type",
+    name: "tfhe-wasm",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (req.url?.includes(".wasm")) {
+        if (req.url?.includes("tfhe_bg.wasm")) {
+          if (!fs.existsSync(TFHE_WASM)) {
+            res.statusCode = 404;
+            res.end("tfhe_bg.wasm not found");
+            return;
+          }
           res.setHeader("Content-Type", "application/wasm");
+          fs.createReadStream(TFHE_WASM).pipe(res);
+          return;
         }
         next();
       });
@@ -25,24 +38,19 @@ export default defineConfig({
     react(),
     tailwindcss(),
     tsconfigPaths(),
-    wasmContentTypePlugin(),
+    tfheWasmPlugin(),
   ],
   server: {
     port: 5173,
     strictPort: true,
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
-    },
   },
   worker: {
     format: "es",
   },
   assetsInclude: ["**/*.wasm"],
   optimizeDeps: {
-    // Pre-bundle tweetnacl for CJS interop; keep tfhe/@cofhe out so tfhe_bg.wasm resolves correctly.
-    include: ["iframe-shared-storage", "tweetnacl"],
+    // Pre-bundle @cofhe/sdk (bundles its own zod v4) + tweetnacl CJS interop.
+    include: ["iframe-shared-storage", "tweetnacl", "@cofhe/sdk", "@cofhe/sdk/web"],
     needsInterop: ["tweetnacl"],
-    exclude: ["@cofhe/sdk", "@cofhe/sdk/web", "tfhe"],
   },
 });

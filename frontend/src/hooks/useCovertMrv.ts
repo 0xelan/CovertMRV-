@@ -13,7 +13,7 @@
 //     has `from = address(0)` and reverts.
 //   - CofheError codes mapped to friendly strings via `describeFheError`.
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useAccount,
   usePublicClient,
@@ -40,7 +40,15 @@ import {
   encryptEmissionSubmission,
   encryptUint64,
 } from "@/lib/fhe";
+import {
+  loadSubmittedFacilityIds,
+  recordSubmittedFacilityIds,
+} from "@/lib/submitted-facilities";
 import { useFHEStatus } from "./useFHEStatus";
+
+function isInitializedHandle(handle: bigint | undefined): boolean {
+  return handle !== undefined && handle !== 0n;
+}
 
 // Per-call gas limits tuned for Arbitrum Sepolia + CoFHE coprocessor.
 const GAS = {
@@ -79,13 +87,60 @@ export function useCovertMrv() {
     functionName: "owner",
   });
 
-  const facilityIds = useReadContract({
+  const facilityCountRead = useReadContract({
     address: CAP_REGISTRY_ADDRESS,
     abi: CAP_REGISTRY_ABI,
-    functionName: "getFacilityIds",
+    functionName: "getFacilityCount",
     args: address ? [address] : undefined,
+    account: address,
     query: { enabled: !!address },
   });
+
+  const [trackedFacilityIds, setTrackedFacilityIds] = useState<readonly bigint[]>([]);
+
+  // companyFacilities is private on-chain — track IDs locally and reconcile via isFacilitySubmitted.
+  useEffect(() => {
+    if (!address) {
+      setTrackedFacilityIds([]);
+      return;
+    }
+    setTrackedFacilityIds(loadSubmittedFacilityIds(address));
+  }, [address]);
+
+  useEffect(() => {
+    if (!publicClient || !address) return;
+    const chainCount = Number(facilityCountRead.data ?? 0n);
+    if (chainCount === 0) return;
+    if (trackedFacilityIds.length >= chainCount) return;
+
+    let cancelled = false;
+    (async () => {
+      const found: bigint[] = [...trackedFacilityIds];
+      for (let i = 1n; i <= 64n; i++) {
+        if (found.length >= chainCount) break;
+        if (found.some((id) => id === i)) continue;
+        try {
+          const submitted = await publicClient.readContract({
+            address: CAP_REGISTRY_ADDRESS,
+            abi: CAP_REGISTRY_ABI,
+            functionName: "isFacilitySubmitted",
+            args: [address, i],
+          });
+          if (submitted) found.push(i);
+        } catch {
+          /* ignore scan errors */
+        }
+      }
+      if (cancelled || found.length === 0) return;
+      found.sort((a, b) => (a > b ? 1 : a < b ? -1 : 0));
+      recordSubmittedFacilityIds(address, found);
+      setTrackedFacilityIds(found);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [publicClient, address, facilityCountRead.data, trackedFacilityIds.length]);
 
   const companyTotalHandle = useReadContract({
     address: CAP_REGISTRY_ADDRESS,
@@ -187,6 +242,10 @@ export function useCovertMrv() {
           ...fees,
         });
         fhe.setStep("READY");
+        if (address) {
+          const updated = recordSubmittedFacilityIds(address, [facilityId]);
+          setTrackedFacilityIds(updated);
+        }
         return hash;
       } catch (err) {
         fhe.setStep("ERROR", describeFheError(err));
@@ -194,7 +253,7 @@ export function useCovertMrv() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [publicClient, walletClient, writeContractAsync],
+    [publicClient, walletClient, writeContractAsync, address],
   );
 
   const batchSubmitEmissions = useCallback(
@@ -221,6 +280,10 @@ export function useCovertMrv() {
           ...fees,
         });
         fhe.setStep("READY");
+        if (address) {
+          const updated = recordSubmittedFacilityIds(address, facilityIds_);
+          setTrackedFacilityIds(updated);
+        }
         return hash;
       } catch (err) {
         fhe.setStep("ERROR", describeFheError(err));
@@ -228,14 +291,14 @@ export function useCovertMrv() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [publicClient, walletClient, writeContractAsync],
+    [publicClient, walletClient, writeContractAsync, address],
   );
 
   const aggregateTotal = useCallback(
     async (company: `0x${string}`) => {
       const { publicClient: pc } = ensureClients();
       const facilityCount = BigInt(
-        (facilityIds.data as readonly bigint[] | undefined)?.length ?? 1,
+        Number(facilityCountRead.data ?? 0n) || trackedFacilityIds.length || 1,
       );
       const gas = GAS.aggregateBase + GAS.aggregatePerFacility * facilityCount;
       const fees = await getGasFees(pc);
@@ -249,7 +312,7 @@ export function useCovertMrv() {
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [publicClient, walletClient, writeContractAsync, facilityIds.data],
+    [publicClient, walletClient, writeContractAsync, facilityCountRead.data, trackedFacilityIds.length],
   );
 
   const setCap = useCallback(
@@ -455,6 +518,28 @@ export function useCovertMrv() {
     [publicClient, walletClient, address],
   );
 
+  const refetchAll = useCallback(() => {
+    void myRole.refetch();
+    void facilityCountRead.refetch();
+    void companyTotalHandle.refetch();
+    void regulatoryCapHandle.refetch();
+    void complianceHandle.refetch();
+    void settledStatus.refetch();
+    void lastCheckedAt.refetch();
+    void auditGrant.refetch();
+    void certificateBalance.refetch();
+  }, [
+    myRole,
+    facilityCountRead,
+    companyTotalHandle,
+    regulatoryCapHandle,
+    complianceHandle,
+    settledStatus,
+    lastCheckedAt,
+    auditGrant,
+    certificateBalance,
+  ]);
+
   return {
     // state
     address,
@@ -464,11 +549,16 @@ export function useCovertMrv() {
       !!address &&
       (owner.data as string).toLowerCase() === address.toLowerCase(),
     role: (myRole.data ?? 0) as number,
-    facilityIds: (facilityIds.data ?? []) as readonly bigint[],
+    facilityCount: Number(facilityCountRead.data ?? 0n),
+    facilityIds: trackedFacilityIds,
     companyTotalHandle: (companyTotalHandle.data ?? 0n) as bigint,
-    hasAggregated: !!(companyTotalHandle.data as bigint | undefined),
+    hasAggregated:
+      companyTotalHandle.isSuccess &&
+      isInitializedHandle(companyTotalHandle.data as bigint | undefined),
     regulatoryCapHandle: (regulatoryCapHandle.data ?? 0n) as bigint,
-    hasCapSet: !!(regulatoryCapHandle.data as bigint | undefined),
+    hasCapSet:
+      regulatoryCapHandle.isSuccess &&
+      isInitializedHandle(regulatoryCapHandle.data as bigint | undefined),
     complianceHandle: (complianceHandle.data ?? 0n) as bigint,
     settled: settledStatus.data as readonly [boolean, boolean] | undefined,
     lastCheckedAt: (lastCheckedAt.data ?? 0n) as bigint,
@@ -483,17 +573,7 @@ export function useCovertMrv() {
     fheWorking: fhe.isWorking,
     resetFheStatus: fhe.reset,
     // refetchers
-    refetch: () => {
-      myRole.refetch();
-      facilityIds.refetch();
-      companyTotalHandle.refetch();
-      regulatoryCapHandle.refetch();
-      complianceHandle.refetch();
-      settledStatus.refetch();
-      lastCheckedAt.refetch();
-      auditGrant.refetch();
-      certificateBalance.refetch();
-    },
+    refetch: refetchAll,
     // actions
     registerAsEmitter,
     submitEmissions,

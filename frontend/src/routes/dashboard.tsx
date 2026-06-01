@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -38,7 +38,7 @@ import { ChainGuard } from "@/components/shared/ChainGuard";
 import { useCovertMrv, useWaitForTransactionReceipt } from "@/hooks/useCovertMrv";
 import { useSupplyChain } from "@/hooks/useSupplyChain";
 import { useCarbonCredits } from "@/hooks/useCarbonCredits";
-import { useAccount, useChainId } from "wagmi";
+import { useAccount, useChainId, usePublicClient } from "wagmi";
 import {
   CAP_REGISTRY_ADDRESS,
   CAP_CHECK_ADDRESS,
@@ -198,12 +198,13 @@ function NotRegisteredBanner({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) 
   const [pending, setPending] = useState(false);
   const [hash, setHash] = useState<`0x${string}` | undefined>();
   const { isLoading, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const handledSuccess = useRef(false);
   useEffect(() => {
-    if (isSuccess) {
-      ctx.refetch();
-      setPending(false);
-    }
-  }, [isSuccess, ctx]);
+    if (!isSuccess || handledSuccess.current) return;
+    handledSuccess.current = true;
+    ctx.refetch();
+    setPending(false);
+  }, [isSuccess, ctx.refetch]);
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-info/30 bg-blue-info/5 px-10 py-3">
       <div className="flex items-center gap-2 text-[13px] text-foreground/75">
@@ -412,7 +413,7 @@ function StatusPill({ kind, children }: { kind: "ok" | "warn" | "err" | "info"; 
 /* -------------------- Overview -------------------- */
 
 function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
-  const facilityCount = ctx.facilityIds.length;
+  const facilityCount = ctx.facilityCount || ctx.facilityIds.length;
   const settledStatus = ctx.settled?.[0];
   const settledValue = ctx.settled?.[1];
   const contractCount = 8;
@@ -720,6 +721,8 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const tx = useWaitForTransactionReceipt({ hash });
   const aggTx = useWaitForTransactionReceipt({ hash: aggHash });
   const batchTx = useWaitForTransactionReceipt({ hash: batchHash });
+  const handledSubmitSuccess = useRef(false);
+  const autoAggregateStarted = useRef(false);
 
   const SCOPE_OPTIONS = [
     { value: 0, label: "Scope 1 — Direct", desc: "Combustion, process, fugitive" },
@@ -729,22 +732,29 @@ function SubmitEmissions({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
 
   useEffect(() => {
     if (tx.isLoading) setStep(2);
-    if (tx.isSuccess) {
-      setStep(4);
-      ctx.refetch();
-      // Auto-aggregate so compliance check can run immediately after submit.
-      if (ctx.address) {
-        ctx.aggregateTotal(ctx.address as `0x${string}`)
-          .then((h) => setAggHash(h))
-          .catch(() => {});
-      }
-    }
-  }, [tx.isLoading, tx.isSuccess, ctx]);
+  }, [tx.isLoading]);
+
+  useEffect(() => {
+    if (!tx.isSuccess || handledSubmitSuccess.current) return;
+    handledSubmitSuccess.current = true;
+    setStep(4);
+    ctx.refetch();
+    if (!ctx.address || autoAggregateStarted.current) return;
+    autoAggregateStarted.current = true;
+    ctx
+      .aggregateTotal(ctx.address as `0x${string}`)
+      .then((h) => setAggHash(h))
+      .catch(() => {
+        autoAggregateStarted.current = false;
+      });
+  }, [tx.isSuccess, ctx.address, ctx.refetch, ctx.aggregateTotal]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setHash(undefined);
+    handledSubmitSuccess.current = false;
+    autoAggregateStarted.current = false;
     setStep(1);
     try {
       if (!ctx.fheReady) throw new Error("FHE client not ready — wait a moment then retry");
@@ -1119,6 +1129,7 @@ const CHECK_STEPS = [
 ];
 
 function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
+  const publicClient = usePublicClient();
   const [step, setStep] = useState(0);
   const [hash, setHash] = useState<`0x${string}` | undefined>();
   const [decrypted, setDecrypted] = useState<null | boolean>(null);
@@ -1127,14 +1138,19 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   const [aggregating, setAggregating] = useState(false);
   const [reportingYear, setReportingYear] = useState(String(new Date().getFullYear()));
   const tx = useWaitForTransactionReceipt({ hash });
+  const handledCheckSuccess = useRef(false);
+  const aggregateInFlight = useRef(false);
 
   useEffect(() => {
     if (tx.isLoading) setStep(2);
-    if (tx.isSuccess) {
-      setStep(4);
-      ctx.refetch();
-    }
-  }, [tx.isLoading, tx.isSuccess, ctx]);
+  }, [tx.isLoading]);
+
+  useEffect(() => {
+    if (!tx.isSuccess || handledCheckSuccess.current) return;
+    handledCheckSuccess.current = true;
+    setStep(4);
+    ctx.refetch();
+  }, [tx.isSuccess, ctx.refetch]);
 
   // Pre-flight: are both prerequisites met?
   const noTotal = !ctx.hasAggregated;
@@ -1156,17 +1172,21 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   );
 
   async function doAggregate() {
-    if (!ctx.address) return;
+    if (!ctx.address || aggregating || aggregateInFlight.current || ctx.hasAggregated) return;
+    aggregateInFlight.current = true;
     setError(null);
     setAggregating(true);
     try {
-      await ctx.aggregateTotal(ctx.address as `0x${string}`);
-      await new Promise((r) => setTimeout(r, 4000));
+      const h = await ctx.aggregateTotal(ctx.address as `0x${string}`);
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: h });
+      }
       ctx.refetch();
     } catch (e) {
       setError("Aggregate failed: " + (e as Error).message);
     } finally {
       setAggregating(false);
+      aggregateInFlight.current = false;
     }
   }
 
@@ -1175,6 +1195,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     setError(null);
     setDecrypted(null);
     setHash(undefined);
+    handledCheckSuccess.current = false;
     setStep(1);
     try {
       const h = await ctx.checkCompliance(ctx.address as `0x${string}`, Number(reportingYear));
@@ -1471,7 +1492,7 @@ function AuditAccess({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
         /* noop */
       }
     })();
-  }, [storageKey, ctx.address, ctx]);
+  }, [storageKey, ctx.address, ctx.checkAuditActive, ctx.refetch]);
 
   function persist(next: Grant[]) {
     setGrants(next);
