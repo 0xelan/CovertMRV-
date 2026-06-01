@@ -44,8 +44,10 @@ export function useSupplyChain() {
   });
 
   function ensureClients() {
-    if (!publicClient || !walletClient) throw new Error("Wallet not connected");
-    return { publicClient, walletClient };
+    if (!publicClient || !walletClient || !address) {
+      throw new Error("Wallet not connected");
+    }
+    return { publicClient, walletClient, address };
   }
 
   const registerAsEmitter = useCallback(async () => {
@@ -61,10 +63,10 @@ export function useSupplyChain() {
 
   const submitFactor = useCallback(
     async (sku: string, factorTonnes: bigint, year: number) => {
-      const { publicClient: pc, walletClient: wc } = ensureClients();
+      const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
-        const encrypted = await encryptUint64(pc, wc, factorTonnes, fhe.setLabel);
+        const encrypted = await encryptUint64(pc, wc, acct, factorTonnes, fhe.setLabel);
         fhe.setStep("COMPUTING");
         const fees = await getGasFees(pc);
         const hash = await writeContractAsync({
@@ -119,10 +121,10 @@ export function useSupplyChain() {
 
   const checkThreshold = useCallback(
     async (sku: string, suppliers: Address[], thresholdTonnes: bigint) => {
-      const { publicClient: pc, walletClient: wc } = ensureClients();
+      const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
-        const encThreshold = await encryptUint64(pc, wc, thresholdTonnes, fhe.setLabel);
+        const encThreshold = await encryptUint64(pc, wc, acct, thresholdTonnes, fhe.setLabel);
         fhe.setStep("COMPUTING");
         const fees = await getGasFees(pc);
         const hash = await writeContractAsync({
@@ -146,9 +148,9 @@ export function useSupplyChain() {
 
   const decryptHandle = useCallback(
     async (handle: bigint) => {
-      const { publicClient: pc, walletClient: wc } = ensureClients();
+      const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       fhe.setStep("COMPUTING");
-      const value = await decryptUint64(pc, wc, handle, fhe.setLabel);
+      const value = await decryptUint64(pc, wc, acct, handle, fhe.setLabel);
       fhe.setStep("READY");
       return value;
     },

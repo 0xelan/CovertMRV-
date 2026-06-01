@@ -1232,8 +1232,12 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   useEffect(() => {
     if (!tx.isSuccess || handledCheckSuccess.current) return;
     handledCheckSuccess.current = true;
-    setStep(4);
-    ctx.refetch();
+    setStep(3);
+    const timer = window.setTimeout(() => {
+      ctx.refetch();
+      setStep(4);
+    }, 3_000);
+    return () => window.clearTimeout(timer);
   }, [tx.isSuccess, ctx.refetch]);
 
   // Pre-flight: are both prerequisites met?
@@ -1299,7 +1303,14 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
   }
 
   async function decrypt() {
-    if (!ctx.complianceHandle) return;
+    if (!ctx.hasComplianceResult) {
+      setError("Run a compliance check first and wait for on-chain confirmation.");
+      return;
+    }
+    if (tx.isLoading) {
+      setError("Wait for the compliance check transaction to confirm.");
+      return;
+    }
     setError(null);
     setDecrypting(true);
     try {
@@ -1446,7 +1457,11 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
                       <EncryptedNumber value="ENCRYPTED" decrypted={false} />
                     </p>
                     <p className="font-mono text-[11px] text-foreground/50">
-                      {ctx.complianceHandle ? "ebool · ready to decrypt" : "no result yet — run check"}
+                      {ctx.hasComplianceResult
+                        ? step < 4
+                          ? "ebool · syncing decrypt access…"
+                          : "ebool · ready to decrypt"
+                        : "no result yet — run check"}
                     </p>
                   </motion.div>
                 ) : decrypted ? (
@@ -1486,7 +1501,7 @@ function ComplianceCheck({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             </div>
 
             <button
-              disabled={!ctx.complianceHandle || decrypting}
+              disabled={!ctx.hasComplianceResult || decrypting || step < 4}
               onClick={decrypt}
               className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full border border-foreground/25 bg-foreground/[0.04] px-6 py-3 text-[13px] font-semibold text-foreground transition hover:border-emerald hover:text-emerald disabled:opacity-50"
             >

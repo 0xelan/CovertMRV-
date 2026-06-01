@@ -200,10 +200,10 @@ export function useCovertMrv() {
   });
 
   function ensureClients() {
-    if (!publicClient || !walletClient) {
+    if (!publicClient || !walletClient || !address) {
       throw new Error("Wallet not connected");
     }
-    return { publicClient, walletClient };
+    return { publicClient, walletClient, address };
   }
 
   // ─── Writes ────────────────────────────────────────────────────────
@@ -221,12 +221,13 @@ export function useCovertMrv() {
 
   const submitEmissions = useCallback(
     async (facilityId: bigint, tonnes: bigint, reportingYear: number, scope: number = 0) => {
-      const { publicClient: pc, walletClient: wc } = ensureClients();
+      const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
         const { encEmissions, encScope } = await encryptEmissionSubmission(
           pc,
           wc,
+          acct,
           tonnes,
           scope,
           fhe.setLabel,
@@ -258,13 +259,14 @@ export function useCovertMrv() {
 
   const batchSubmitEmissions = useCallback(
     async (facilityIds_: bigint[], tonnesArr: bigint[], reportingYear: number, scope: number = 0) => {
-      const { publicClient: pc, walletClient: wc } = ensureClients();
+      const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
         const scopes = tonnesArr.map(() => scope);
         const { encEmissions, encScopes } = await encryptBatchEmissions(
           pc,
           wc,
+          acct,
           tonnesArr,
           scopes,
           fhe.setLabel,
@@ -317,10 +319,10 @@ export function useCovertMrv() {
 
   const setCap = useCallback(
     async (company: `0x${string}`, tonnes: bigint) => {
-      const { publicClient: pc, walletClient: wc } = ensureClients();
+      const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
-        const encrypted = await encryptUint64(pc, wc, tonnes, fhe.setLabel);
+        const encrypted = await encryptUint64(pc, wc, acct, tonnes, fhe.setLabel);
         fhe.setStep("COMPUTING");
         const fees = await getGasFees(pc);
         const hash = await writeContractAsync({
@@ -417,7 +419,7 @@ export function useCovertMrv() {
 
   const settleCompliance = useCallback(
     async (company: `0x${string}`) => {
-      const { publicClient: pc, walletClient: wc } = ensureClients();
+      const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       const handle = (complianceHandle.data ?? 0n) as bigint;
       if (!handle)
         throw new Error("No compliance result yet — run a check first.");
@@ -426,6 +428,7 @@ export function useCovertMrv() {
         const { decryptedValue, signature } = await decryptForSettlement(
           pc,
           wc,
+          acct,
           handle,
           fhe.setLabel,
         );
@@ -454,10 +457,10 @@ export function useCovertMrv() {
 
   const decryptHandleU64 = useCallback(
     async (handle: bigint): Promise<bigint> => {
-      const { publicClient: pc, walletClient: wc } = ensureClients();
+      const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       try {
         fhe.setStep("COMPUTING");
-        const value = await decryptUint64(pc, wc, handle, fhe.setLabel);
+        const value = await decryptUint64(pc, wc, acct, handle, fhe.setLabel);
         fhe.setStep("READY");
         return value;
       } catch (err) {
@@ -466,15 +469,15 @@ export function useCovertMrv() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [publicClient, walletClient],
+    [publicClient, walletClient, address],
   );
 
   const decryptHandleBool = useCallback(
     async (handle: bigint): Promise<boolean> => {
-      const { publicClient: pc, walletClient: wc } = ensureClients();
+      const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       try {
         fhe.setStep("COMPUTING");
-        const value = await decryptBool(pc, wc, handle, fhe.setLabel);
+        const value = await decryptBool(pc, wc, acct, handle, fhe.setLabel);
         fhe.setStep("READY");
         return value;
       } catch (err) {
@@ -483,7 +486,7 @@ export function useCovertMrv() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [publicClient, walletClient],
+    [publicClient, walletClient, address],
   );
 
   /**
@@ -506,7 +509,7 @@ export function useCovertMrv() {
           account: address,
         })) as unknown as bigint;
         if (!handle) throw new Error("Facility has no encrypted handle yet.");
-        const value = await decryptUint64(pc, wc, handle, fhe.setLabel);
+        const value = await decryptUint64(pc, wc, address, handle, fhe.setLabel);
         fhe.setStep("READY");
         return value;
       } catch (err) {
@@ -560,6 +563,9 @@ export function useCovertMrv() {
       regulatoryCapHandle.isSuccess &&
       isInitializedHandle(regulatoryCapHandle.data as bigint | undefined),
     complianceHandle: (complianceHandle.data ?? 0n) as bigint,
+    hasComplianceResult:
+      complianceHandle.isSuccess &&
+      isInitializedHandle(complianceHandle.data as bigint | undefined),
     settled: settledStatus.data as readonly [boolean, boolean] | undefined,
     lastCheckedAt: (lastCheckedAt.data ?? 0n) as bigint,
     auditGrantExpiry: 0n,

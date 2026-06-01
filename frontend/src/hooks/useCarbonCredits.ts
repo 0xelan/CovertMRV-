@@ -59,8 +59,10 @@ export function useCarbonCredits() {
   });
 
   function ensureClients() {
-    if (!publicClient || !walletClient) throw new Error("Wallet not connected");
-    return { publicClient, walletClient };
+    if (!publicClient || !walletClient || !address) {
+      throw new Error("Wallet not connected");
+    }
+    return { publicClient, walletClient, address };
   }
 
   const registerAsEmitter = useCallback(async () => {
@@ -91,11 +93,10 @@ export function useCarbonCredits() {
 
   const retireCredits = useCallback(
     async (amountTonnes: bigint, year: number, nonce: bigint = 0n) => {
-      const { publicClient: pc, walletClient: wc } = ensureClients();
-      if (!address) throw new Error("Wallet not connected");
+      const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
-        const encAmount = await encryptUint64(pc, wc, amountTonnes, fhe.setLabel);
+        const encAmount = await encryptUint64(pc, wc, acct, amountTonnes, fhe.setLabel);
         const retirementId = keccak256(
           encodePacked(["address", "uint256", "uint256"], [address, BigInt(year), nonce]),
         );
@@ -123,9 +124,9 @@ export function useCarbonCredits() {
   const decryptBalance = useCallback(async () => {
     const handle = confidentialBalance.data as bigint | undefined;
     if (!handle) throw new Error("No encrypted balance handle");
-    const { publicClient: pc, walletClient: wc } = ensureClients();
+    const { publicClient: pc, walletClient: wc, address: acct } = ensureClients();
     fhe.setStep("COMPUTING");
-    const value = await decryptUint64(pc, wc, handle, fhe.setLabel);
+    const value = await decryptUint64(pc, wc, acct, handle, fhe.setLabel);
     fhe.setStep("READY");
     return value;
   }, [confidentialBalance.data, publicClient, walletClient, fhe]);

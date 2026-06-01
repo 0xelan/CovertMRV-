@@ -17,13 +17,39 @@ import {
   type CofheClient,
 } from "@cofhe/sdk";
 import { arbSepolia } from "@cofhe/sdk/chains";
-import type { PublicClient, WalletClient } from "viem";
+import type { Address, PublicClient, WalletClient } from "viem";
+
+const ARB_SEPOLIA_CHAIN_ID = 421614;
+const DECRYPT_ACL_RETRY_DELAYS_MS = [0, 2_000, 4_000, 8_000] as const;
 
 let client: CofheClient | null = null;
 let connectPromise: Promise<CofheClient> | null = null;
 let connectedAccount: string | null = null;
 
 export type StepCallback = (step: string) => void;
+
+/**
+ * RainbowKit / wagmi often return a WalletClient without `account` populated.
+ * CoFHE permits and sealoutput ACL checks require the connected address.
+ */
+export function bindWalletAccount(
+  walletClient: WalletClient,
+  account: Address,
+): WalletClient {
+  if (
+    walletClient.account?.address?.toLowerCase() === account.toLowerCase()
+  ) {
+    return walletClient;
+  }
+  return {
+    ...walletClient,
+    account: { address: account, type: "json-rpc" },
+  };
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Dev-only sealoutput response interceptor for debugging permit issues.
 if (typeof window !== "undefined" && import.meta.env.DEV) {
@@ -60,8 +86,13 @@ if (typeof window !== "undefined" && import.meta.env.DEV) {
 export async function getFheClient(
   publicClient: PublicClient,
   walletClient: WalletClient,
+  account?: Address,
 ): Promise<CofheClient> {
-  const currentAccount = walletClient.account?.address?.toLowerCase() ?? null;
+  if (!account) {
+    throw new Error("Wallet address required for FHE client");
+  }
+  const boundWallet = bindWalletAccount(walletClient, account);
+  const currentAccount = boundWallet.account.address.toLowerCase();
 
   if (client && connectedAccount && currentAccount !== connectedAccount) {
     client = null;
@@ -75,7 +106,7 @@ export async function getFheClient(
   connectPromise = (async () => {
     const config = createCofheConfig({ supportedChains: [arbSepolia] });
     const c = createCofheClient(config);
-    await c.connect(publicClient as never, walletClient as never);
+    await c.connect(publicClient as never, boundWallet as never);
     client = c;
     connectedAccount = currentAccount;
     return c;
@@ -103,10 +134,11 @@ export function resetFheClient(): void {
 export async function encryptUint64(
   publicClient: PublicClient,
   walletClient: WalletClient,
+  account: Address,
   value: bigint,
   onStep?: StepCallback,
 ) {
-  const c = await getFheClient(publicClient, walletClient);
+  const c = await getFheClient(publicClient, walletClient, account);
   onStep?.("Initializing FHE");
   const result = await c
     .encryptInputs([Encryptable.uint64(value)])
@@ -121,10 +153,11 @@ export async function encryptUint64(
 export async function encryptUint8(
   publicClient: PublicClient,
   walletClient: WalletClient,
+  account: Address,
   value: bigint,
   onStep?: StepCallback,
 ) {
-  const c = await getFheClient(publicClient, walletClient);
+  const c = await getFheClient(publicClient, walletClient, account);
   onStep?.("Initializing FHE");
   const result = await c
     .encryptInputs([Encryptable.uint8(value)])
@@ -139,11 +172,12 @@ export async function encryptUint8(
 export async function encryptEmissionSubmission(
   publicClient: PublicClient,
   walletClient: WalletClient,
+  account: Address,
   tonnes: bigint,
   scope: number,
   onStep?: StepCallback,
 ) {
-  const c = await getFheClient(publicClient, walletClient);
+  const c = await getFheClient(publicClient, walletClient, account);
   onStep?.("Encrypting emissions + scope");
   const result = await c
     .encryptInputs([Encryptable.uint64(tonnes), Encryptable.uint8(BigInt(scope))])
@@ -158,6 +192,7 @@ export async function encryptEmissionSubmission(
 export async function encryptBatchEmissions(
   publicClient: PublicClient,
   walletClient: WalletClient,
+  account: Address,
   tonnesArr: bigint[],
   scopes: number[],
   onStep?: StepCallback,
@@ -165,7 +200,7 @@ export async function encryptBatchEmissions(
   if (tonnesArr.length !== scopes.length) {
     throw new Error("emissions and scopes length mismatch");
   }
-  const c = await getFheClient(publicClient, walletClient);
+  const c = await getFheClient(publicClient, walletClient, account);
   onStep?.("Encrypting batch");
   const inputs = tonnesArr.flatMap((t, i) => [
     Encryptable.uint64(t),
@@ -196,13 +231,140 @@ export function describeFheError(err: unknown): string {
         return "Decrypt permit expired or missing — please sign again.";
       case CofheErrorCode.DecryptFailed:
         return "Decryption rejected by the threshold network. Try again in a few seconds.";
+      case CofheErrorCode.SealOutputFailed:
+        return isDecryptAccessError(err)
+          ? "Decrypt access not ready yet — wait for the compliance check to confirm, then try again. If it persists, re-run the compliance check (this refreshes on-chain ACL)."
+          : err.message;
       case CofheErrorCode.NotConnected:
         return "FHE client not connected — reconnect your wallet.";
       default:
         return err.message;
     }
   }
-  return (err as Error)?.message ?? "Unknown error";
+  const msg = (err as Error)?.message ?? "Unknown error";
+  if (isDecryptAccessError(err)) {
+    return "Decrypt access denied (HTTP 403). Confirm the compliance check transaction succeeded, wait a few seconds, then decrypt again.";
+  }
+  return msg;
+}
+
+function isDecryptAccessError(err: unknown): boolean {
+  const msg = (
+    isCofheError(err)
+      ? err.message
+      : (err as Error)?.message ?? String(err)
+  ).toLowerCase();
+  return (
+    msg.includes("403") ||
+    msg.includes("acl") ||
+    msg.includes("not allowed") ||
+    msg.includes("access denied") ||
+    msg.includes("sealoutput request failed")
+  );
+}
+
+async function refreshSelfPermit(
+  c: CofheClient,
+  publicClient: PublicClient,
+  account: Address,
+) {
+  const chainId = await publicClient.getChainId();
+  try {
+    await c.permits.removeActivePermit(chainId, account);
+  } catch {
+    /* ignore */
+  }
+  return c.permits.getOrCreateSelfPermit();
+}
+
+async function decryptForViewWithPermit(
+  c: CofheClient,
+  handle: bigint,
+  utype: typeof FheTypes.Bool | typeof FheTypes.Uint64,
+  account: Address,
+  chainId: number,
+  permit: Awaited<ReturnType<CofheClient["permits"]["getOrCreateSelfPermit"]>>,
+  onStep?: StepCallback,
+) {
+  onStep?.("Decrypting");
+  return c
+    .decryptForView(handle, utype)
+    .setChainId(chainId)
+    .setAccount(account)
+    .withPermit(permit)
+    .set404RetryTimeout(15_000)
+    .execute();
+}
+
+async function decryptBoolViaTx(
+  c: CofheClient,
+  handle: bigint,
+  account: Address,
+  chainId: number,
+  permit: Awaited<ReturnType<CofheClient["permits"]["getOrCreateSelfPermit"]>>,
+  onStep?: StepCallback,
+): Promise<boolean> {
+  onStep?.("Decrypting (tx path)");
+  const { decryptedValue } = (await c
+    .decryptForTx(handle)
+    .setChainId(chainId)
+    .setAccount(account)
+    .withPermit(permit)
+    .set404RetryTimeout(15_000)
+    .execute()) as { decryptedValue: unknown };
+  return Boolean(Number(decryptedValue));
+}
+
+async function decryptWithAclRetries(
+  c: CofheClient,
+  publicClient: PublicClient,
+  account: Address,
+  handle: bigint,
+  utype: typeof FheTypes.Bool | typeof FheTypes.Uint64,
+  onStep?: StepCallback,
+): Promise<unknown> {
+  const chainId = await publicClient.getChainId();
+  if (chainId !== ARB_SEPOLIA_CHAIN_ID) {
+    throw new Error(`Switch wallet to Arbitrum Sepolia (${ARB_SEPOLIA_CHAIN_ID})`);
+  }
+
+  let lastErr: unknown;
+  for (let i = 0; i < DECRYPT_ACL_RETRY_DELAYS_MS.length; i++) {
+    const delay = DECRYPT_ACL_RETRY_DELAYS_MS[i];
+    if (delay > 0) {
+      onStep?.(`Waiting for ACL sync (${delay / 1000}s)`);
+      await sleep(delay);
+    }
+    try {
+      onStep?.(i === 0 ? "Creating permit" : "Refreshing permit");
+      const permit = await refreshSelfPermit(c, publicClient, account);
+      return await decryptForViewWithPermit(
+        c,
+        handle,
+        utype,
+        account,
+        chainId,
+        permit,
+        onStep,
+      );
+    } catch (err) {
+      lastErr = err;
+      if (!isDecryptAccessError(err) || i === DECRYPT_ACL_RETRY_DELAYS_MS.length - 1) {
+        break;
+      }
+    }
+  }
+
+  if (utype === FheTypes.Bool && isDecryptAccessError(lastErr)) {
+    try {
+      const permit = await refreshSelfPermit(c, publicClient, account);
+      return await decryptBoolViaTx(c, handle, account, chainId, permit, onStep);
+    } catch (txErr) {
+      throw new Error(describeFheError(txErr) || describeFheError(lastErr));
+    }
+  }
+
+  throw new Error(describeFheError(lastErr));
 }
 
 function sessionCacheKey(account: string | undefined, handle: bigint, kind: string) {
@@ -219,12 +381,12 @@ function sessionCacheKey(account: string | undefined, handle: bigint, kind: stri
 export async function decryptUint64(
   publicClient: PublicClient,
   walletClient: WalletClient,
+  account: Address,
   ctHash: bigint | `0x${string}`,
   onStep?: StepCallback,
 ): Promise<bigint> {
-  const c = await getFheClient(publicClient, walletClient);
+  const c = await getFheClient(publicClient, walletClient, account);
   const handle = typeof ctHash === "string" ? BigInt(ctHash) : ctHash;
-  const account = walletClient.account?.address;
   const cacheKey = sessionCacheKey(account, handle, "u64");
 
   if (typeof window !== "undefined") {
@@ -239,54 +401,24 @@ export async function decryptUint64(
     }
   }
 
-  onStep?.("Creating permit");
-  await c.permits.getOrCreateSelfPermit();
-  onStep?.("Decrypting");
-  try {
-    const result = (await c
-      .decryptForView(handle, FheTypes.Uint64)
-      .set404RetryTimeout(15_000)
-      .execute()) as bigint;
-    if (typeof window !== "undefined") {
-      try {
-        window.sessionStorage.setItem(cacheKey, result.toString());
-      } catch {
-        /* ignore */
-      }
-    }
-    onStep?.("Complete");
-    return result;
-  } catch (err) {
-    // Retry with a fresh permit — the cached one may be stale or invalid.
-    onStep?.("Refreshing permit");
+  const result = (await decryptWithAclRetries(
+    c,
+    publicClient,
+    account,
+    handle,
+    FheTypes.Uint64,
+    onStep,
+  )) as bigint;
+
+  if (typeof window !== "undefined") {
     try {
-      const chainId = await publicClient.getChainId();
-      if (account) {
-        try {
-          await c.permits.removeActivePermit(chainId, account);
-        } catch {
-          /* ignore */
-        }
-      }
-      await c.permits.getOrCreateSelfPermit();
-      onStep?.("Decrypting (retry)");
-      const result = (await c
-        .decryptForView(handle, FheTypes.Uint64)
-        .set404RetryTimeout(15_000)
-        .execute()) as bigint;
-      if (typeof window !== "undefined") {
-        try {
-          window.sessionStorage.setItem(cacheKey, result.toString());
-        } catch {
-          /* ignore */
-        }
-      }
-      onStep?.("Complete");
-      return result;
-    } catch (retryErr) {
-      throw new Error(describeFheError(retryErr) || describeFheError(err));
+      window.sessionStorage.setItem(cacheKey, result.toString());
+    } catch {
+      /* ignore */
     }
   }
+  onStep?.("Complete");
+  return result;
 }
 
 /**
@@ -295,12 +427,12 @@ export async function decryptUint64(
 export async function decryptBool(
   publicClient: PublicClient,
   walletClient: WalletClient,
+  account: Address,
   ctHash: bigint | `0x${string}`,
   onStep?: StepCallback,
 ): Promise<boolean> {
-  const c = await getFheClient(publicClient, walletClient);
+  const c = await getFheClient(publicClient, walletClient, account);
   const handle = typeof ctHash === "string" ? BigInt(ctHash) : ctHash;
-  const account = walletClient.account?.address;
   const cacheKey = sessionCacheKey(account, handle, "bool");
 
   if (typeof window !== "undefined") {
@@ -315,53 +447,24 @@ export async function decryptBool(
     }
   }
 
-  onStep?.("Creating permit");
-  await c.permits.getOrCreateSelfPermit();
-  onStep?.("Decrypting");
-  try {
-    const result = (await c
-      .decryptForView(handle, FheTypes.Bool)
-      .set404RetryTimeout(15_000)
-      .execute()) as boolean;
-    if (typeof window !== "undefined") {
-      try {
-        window.sessionStorage.setItem(cacheKey, String(result));
-      } catch {
-        /* ignore */
-      }
-    }
-    onStep?.("Complete");
-    return result;
-  } catch (err) {
-    onStep?.("Refreshing permit");
+  const result = (await decryptWithAclRetries(
+    c,
+    publicClient,
+    account,
+    handle,
+    FheTypes.Bool,
+    onStep,
+  )) as boolean;
+
+  if (typeof window !== "undefined") {
     try {
-      const chainId = await publicClient.getChainId();
-      if (account) {
-        try {
-          await c.permits.removeActivePermit(chainId, account);
-        } catch {
-          /* ignore */
-        }
-      }
-      await c.permits.getOrCreateSelfPermit();
-      onStep?.("Decrypting (retry)");
-      const result = (await c
-        .decryptForView(handle, FheTypes.Bool)
-        .set404RetryTimeout(15_000)
-        .execute()) as boolean;
-      if (typeof window !== "undefined") {
-        try {
-          window.sessionStorage.setItem(cacheKey, String(result));
-        } catch {
-          /* ignore */
-        }
-      }
-      onStep?.("Complete");
-      return result;
-    } catch (retryErr) {
-      throw new Error(describeFheError(retryErr) || describeFheError(err));
+      window.sessionStorage.setItem(cacheKey, String(result));
+    } catch {
+      /* ignore */
     }
   }
+  onStep?.("Complete");
+  return result;
 }
 
 /**
@@ -375,15 +478,22 @@ export async function decryptBool(
 export async function decryptForSettlement(
   publicClient: PublicClient,
   walletClient: WalletClient,
+  account: Address,
   ctHash: bigint | `0x${string}`,
   onStep?: StepCallback,
 ): Promise<{ decryptedValue: unknown; signature: `0x${string}` }> {
-  const c = await getFheClient(publicClient, walletClient);
+  const c = await getFheClient(publicClient, walletClient, account);
   const handle = typeof ctHash === "string" ? BigInt(ctHash) : ctHash;
+  const chainId = await publicClient.getChainId();
   onStep?.("Creating permit");
-  await c.permits.getOrCreateSelfPermit();
+  const permit = await refreshSelfPermit(c, publicClient, account);
   onStep?.("Decrypting for settlement");
-  const result = (await c.decryptForTx(handle).withPermit().execute()) as {
+  const result = (await c
+    .decryptForTx(handle)
+    .setChainId(chainId)
+    .setAccount(account)
+    .withPermit(permit)
+    .execute()) as {
     decryptedValue: unknown;
     signature: `0x${string}`;
   };
