@@ -15,6 +15,16 @@ import {
   Zap,
 } from "lucide-react";
 import { useState } from "react";
+import {
+  CAP_REGISTRY_ADDRESS,
+  CAP_CHECK_ADDRESS,
+  COMPLIANCE_CERTIFICATE_ADDRESS,
+  SUPPLIER_ATTEST_ADDRESS,
+  PRODUCT_FOOTPRINT_ADDRESS,
+  CCO2_ADDRESS,
+  CREDIT_ISSUER_ADDRESS,
+  CREDIT_RETIRE_ADDRESS,
+} from "@/config/contracts";
 
 export const Route = createFileRoute("/docs")({
   component: Docs,
@@ -22,8 +32,8 @@ export const Route = createFileRoute("/docs")({
 
 const SECTIONS = [
   { id: "overview", label: "Protocol Overview" },
-  { id: "wave4", label: "Wave 4 Changelog" },
-  { id: "wave3", label: "Wave 3 Changelog" },
+  { id: "changelog-extended", label: "ScopeX & Credits Changelog" },
+  { id: "changelog-core", label: "Core Compliance Changelog" },
   { id: "architecture", label: "Architecture" },
   { id: "deployments", label: "Deployments" },
   { id: "fhe", label: "How FHE Works" },
@@ -45,7 +55,7 @@ function Docs() {
           <div className="flex items-center gap-4 font-mono text-[11px] uppercase tracking-[0.22em] text-foreground/45">
             <span className="text-emerald">DOCS</span>
             <span className="h-px w-12 bg-foreground/20" />
-          <span>v0.4.0 · Wave 4 · Arbitrum Sepolia</span>
+          <span>v0.4.0 · ScopeX · Arbitrum Sepolia</span>
           </div>
           <h1 className="font-display mt-6 max-w-3xl text-4xl font-normal leading-[1.05] tracking-tight md:text-6xl">
             Protocol
@@ -58,7 +68,7 @@ function Docs() {
             document describes the contracts, the cryptographic primitives, and
             the disclosure model.
           </p>            <p className="mt-2 font-mono text-[12px] text-emerald/70">
-              Wave 3 — SDK 0.5.2 · ComplianceCertificate NFT · Batch Submit · Reporting Year · Enterprise API · ISO 14064 Scope 1/2/3
+              SDK 0.5.2 · ComplianceCertificate NFT · Batch Submit · Reporting Year · Enterprise API · ISO 14064 Scope 1/2/3
             </p>        </div>
       </section>
 
@@ -99,12 +109,12 @@ function Docs() {
               remain ciphertext for the lifetime of the contract.
             </p>
             <p>
-              Wave 4 adds <strong>5 new contracts</strong>: SupplierAttest (encrypted Scope 3 supplier factors), ProductFootprint (multi-supplier FHE rollup + band classification), cCO2 (FHERC20 carbon credit token), CreditIssuer (FHE.select conditional minting), and CreditRetire (encrypted retirement receipts with selective audit disclosure). Total: <strong>8 contracts, 56 tests</strong>.
+              The extended stack adds <strong>5 contracts</strong>: SupplierAttest (encrypted Scope 3 supplier factors), ProductFootprint (multi-supplier FHE rollup + band classification), cCO2 (FHERC20 carbon credit token), CreditIssuer (FHE.select conditional minting), and CreditRetire (encrypted retirement receipts with selective audit disclosure). Total: <strong>8 contracts, 67 tests</strong>.
             </p>
           </Block>
 
-          <Block id="wave4" title="Wave 4 Changelog">
-            <p className="mb-4 text-foreground/60">All changes shipped in Wave 4 (Q4 2026). 5 new contracts, 25 new tests, full supply chain + carbon credit pipeline.</p>
+          <Block id="changelog-extended" title="ScopeX & Credits Changelog">
+            <p className="mb-4 text-foreground/60">Supply chain + carbon credit pipeline. 5 new contracts, 25 new tests.</p>
             <div className="space-y-3">
               {[
                 {
@@ -134,7 +144,7 @@ function Docs() {
                 },
                 {
                   icon: ServerCog,
-                  label: "CapRegistry + DisclosureACL — Wave 4 Privacy Fixes",
+                  label: "CapRegistry + DisclosureACL — Privacy Fixes",
                   detail: "Scope now encrypted as InEuint8 in submitEmissions. companyFacilities and hasSubmitted mappings made private. getFacilityCount restricted to owner or company only. _rotateHandle added to DisclosureACL for handle hygiene.",
                 },
                 {
@@ -156,8 +166,8 @@ function Docs() {
             </div>
           </Block>
 
-          <Block id="wave3" title="Wave 3 Changelog">
-            <p className="mb-4 text-foreground/60">All changes shipped in Wave 3 (May 2026). Contracts re-deployed at new addresses after ISO scope addition.</p>
+          <Block id="changelog-core" title="Core Compliance Changelog">
+            <p className="mb-4 text-foreground/60">Core compliance stack with encrypted scope, batch submit, and certificate NFT.</p>
             <div className="space-y-3">
               {[
                 {
@@ -211,26 +221,19 @@ function Docs() {
 
           <Block id="deployments" title="Live Deployments">
             <p className="mb-6">
-              Both contracts are deployed on Arbitrum Sepolia (chain ID 421614) and verified. All FHE
+              All eight contracts are deployed on Arbitrum Sepolia (chain ID 421614). FHE
               operations route through the Fhenix CoFHE coprocessor.
             </p>
             <div className="space-y-3">
               {[
-                {
-                  name: "CapRegistry.sol",
-                  address: "0x495e718979D882024CAea4613D7b05F9865bC652",
-                  role: "Encrypted emissions storage + batch submit + cap management",
-                },
-                {
-                  name: "CapCheck.sol",
-                  address: "0xbeA50F98e24F03D6A901897C2B520636d19B9043",
-                  role: "Compliance verification + certificate wiring + audit access control",
-                },
-                {
-                  name: "ComplianceCertificate.sol",
-                  address: "0xC327A527B81402495f343277E37AE19b4112749d",
-                  role: "ERC-721 compliance certificate NFT — minted on settlement",
-                },
+                { name: "CapRegistry.sol", address: CAP_REGISTRY_ADDRESS, role: "Encrypted emissions storage + batch submit + cap management" },
+                { name: "CapCheck.sol", address: CAP_CHECK_ADDRESS, role: "Compliance verification + certificate wiring" },
+                { name: "ComplianceCertificate.sol", address: COMPLIANCE_CERTIFICATE_ADDRESS, role: "ERC-721 compliance certificate NFT" },
+                { name: "SupplierAttest.sol", address: SUPPLIER_ATTEST_ADDRESS, role: "Encrypted Scope 3 supplier intensity factors" },
+                { name: "ProductFootprint.sol", address: PRODUCT_FOOTPRINT_ADDRESS, role: "Multi-supplier FHE footprint rollup" },
+                { name: "cCO2.sol", address: CCO2_ADDRESS, role: "FHERC20 encrypted carbon credit token" },
+                { name: "CreditIssuer.sol", address: CREDIT_ISSUER_ADDRESS, role: "FHE.select conditional credit minting" },
+                { name: "CreditRetire.sol", address: CREDIT_RETIRE_ADDRESS, role: "Encrypted retirement receipts" },
               ].map((c) => (
                 <div
                   key={c.name}
@@ -262,7 +265,7 @@ function Docs() {
             </p>
             <pre className="overflow-x-auto rounded-xl border border-foreground/10 bg-surface p-6 font-mono text-[12.5px] leading-relaxed text-foreground/80">
 {`┌─────────────────────────────────────────────────────────────────┐
-│              CovertMRV Protocol v0.3  ·  Wave 3                 │
+│              CovertMRV Protocol v0.4  ·  ScopeX                 │
 └─────────────────────────────────────────────────────────────────┘
 
    client (browser / enterprise API)
@@ -340,7 +343,7 @@ function Docs() {
               <ContractCard
                 icon={ServerCog}
                 name="CapRegistry.sol"
-                address="0x4460Be641B40484bBD25231f594158531e84e108"
+                address={CAP_REGISTRY_ADDRESS}
                 fns={[
                   ["registerAsEmitter", "() → role granted"],
                   ["submitEmissions", "(facilityId: uint256, e: InEuint64, year: uint256, scope: Scope) → void"],
@@ -355,7 +358,7 @@ function Docs() {
               <ContractCard
                 icon={ShieldCheck}
                 name="CapCheck.sol"
-                address="0x7E2cc776495bb4565C28F60E3a708a44314a2965"
+                address={CAP_CHECK_ADDRESS}
                 fns={[
                   ["checkCompliance", "(company: address, year: uint256) → void  // FHE.lte(total, cap)"],
                   ["settleCompliance", "(company: address, val: bool, sig: bytes) → void  // mints NFT"],
@@ -367,7 +370,7 @@ function Docs() {
               <ContractCard
                 icon={Award}
                 name="ComplianceCertificate.sol"
-                address="0xF91b8DDf2a4110A897204206714E5B90CAd2C8D5"
+                address={COMPLIANCE_CERTIFICATE_ADDRESS}
                 fns={[
                   ["mintCertificate", "(company, year, compliant) → tokenId  // called by CapCheck"],
                   ["getCertificate", "(company, year) → Certificate"],
@@ -388,11 +391,11 @@ function Docs() {
                   ["roleOf", "(addr) → Role enum"],
                 ]}
               />
-              <p className="pt-4 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald/60">Wave 4 Contracts</p>
+              <p className="pt-4 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald/60">ScopeX & Credits Contracts</p>
               <ContractCard
                 icon={Layers}
                 name="SupplierAttest.sol"
-                address="pending deploy:wave4"
+                address={SUPPLIER_ATTEST_ADDRESS}
                 fns={[
                   ["submitFactor", "(sku: bytes32, e: InEuint64, year: uint256) → void  // EMITTER role"],
                   ["getFactor", "(supplier: address, sku: bytes32) → euint64  // FHE.allowTransient"],
@@ -404,7 +407,7 @@ function Docs() {
               <ContractCard
                 icon={Zap}
                 name="ProductFootprint.sol"
-                address="pending deploy:wave4"
+                address={PRODUCT_FOOTPRINT_ADDRESS}
                 fns={[
                   ["computeFootprint", "(sku: bytes32, suppliers: address[]) → euint64"],
                   ["classifyBand", "(sku: bytes32, suppliers: address[]) → euint8  // 0=A 1=B 2=C"],
@@ -415,7 +418,7 @@ function Docs() {
               <ContractCard
                 icon={KeySquare}
                 name="cCO2.sol (FHERC20)"
-                address="pending deploy:wave4"
+                address={CCO2_ADDRESS}
                 fns={[
                   ["mint", "(to: address, amount: uint256) → void  // issuer only, plaintext→encrypted"],
                   ["mintEncrypted", "(to: address, encAmount: euint64) → void  // issuer only"],
@@ -428,7 +431,7 @@ function Docs() {
               <ContractCard
                 icon={ShieldCheck}
                 name="CreditIssuer.sol"
-                address="pending deploy:wave4"
+                address={CREDIT_ISSUER_ADDRESS}
                 fns={[
                   ["issueCredits", "(company: address, reportingYear: uint256) → void"],
                   ["setIssuanceRate", "(rate: uint64) → void  // owner only"],
@@ -438,7 +441,7 @@ function Docs() {
               <ContractCard
                 icon={Lock}
                 name="CreditRetire.sol"
-                address="pending deploy:wave4"
+                address={CREDIT_RETIRE_ADDRESS}
                 fns={[
                   ["retireCredits", "(encAmount: InEuint64, retirementId: bytes32) → void"],
                   ["grantRetirementAudit", "(retirementId: bytes32, auditor: address, durationSecs: uint256) → void"],
@@ -450,35 +453,32 @@ function Docs() {
           </Block>
 
           <Block id="sdk" title="SDK Integration">
-            <p>Wave 3 uses <code className="rounded border border-foreground/10 bg-surface px-1.5 py-0.5 font-mono text-[12px] text-emerald">@cofhe/sdk@0.5.2</code>. Breaking changes from 0.4.x: <code className="rounded border border-foreground/10 bg-surface px-1.5 py-0.5 font-mono text-[12px] text-emerald">getOrCreateSelfPermit()</code> now takes no arguments (uses connected state), and tfhe WASM upgraded to 1.5.3. All contracts re-deployed with ISO 14064 Scope enum — 4th parameter on submit functions.</p>
+            <p>CovertMRV uses <code className="rounded border border-foreground/10 bg-surface px-1.5 py-0.5 font-mono text-[12px] text-emerald">@cofhe/sdk@0.5.2</code>. Scope is encrypted as <code className="rounded border border-foreground/10 bg-surface px-1.5 py-0.5 font-mono text-[12px] text-emerald">InEuint8</code> alongside emissions. Use <code className="rounded border border-foreground/10 bg-surface px-1.5 py-0.5 font-mono text-[12px] text-emerald">getOrCreateSelfPermit()</code> (no args) and <code className="rounded border border-foreground/10 bg-surface px-1.5 py-0.5 font-mono text-[12px] text-emerald">set404RetryTimeout(15_000)</code> on decrypt chains.</p>
             <pre className="overflow-x-auto rounded-xl border border-foreground/10 bg-surface p-6 font-mono text-[12.5px] leading-relaxed text-foreground/80">
-{`// 1. Initialise the FHE client (singleton per session)
-const client = await getFheClient(publicClient, walletClient);
-
-// 2. Encrypt before sending to contract
-const eInput = await client.encrypt_uint64(BigInt(emissionsTonnes));
-
-// 3. Submit single facility (with reporting year + ISO scope)
-//    scope: 0 = Scope 1 Direct, 1 = Scope 2 Indirect, 2 = Scope 3 Value Chain
-await submitEmissions(facilityId, eInput, reportingYear, scope);
-
-// 4. OR — batch submit up to 50 facilities (same scope applied to all)
-await batchSubmitEmissions([1n, 2n, 3n], [eA, eB, eC], 2025n, 0);
-
-// 5. Read your own encrypted value (off-chain, permit-based)
-const permit = await client.getOrCreateSelfPermit(); // 0.5.x: no args
-const sealed = await client
-  .decryptForView(handle, permit)
-  .set404RetryTimeout(15_000)   // new in 0.5.x
+{`// 1. Encrypt emissions + scope together
+const [encEmissions, encScope] = await client
+  .encryptInputs([Encryptable.uint64(tonnes), Encryptable.uint8(scope)])
   .execute();
 
-// 6. Settle compliance on-chain (regulator only)
-const { value, signature } = await client
+// 2. Submit single facility
+await submitEmissions(facilityId, encEmissions, encScope, reportingYear);
+
+// 3. Batch submit (parallel encScopes[])
+await batchSubmitEmissions(ids, encEmissionsArr, encScopesArr, reportingYear);
+
+// 4. Decrypt for UI (permit-based)
+await client.permits.getOrCreateSelfPermit();
+const value = await client
+  .decryptForView(handle, FheTypes.Uint64)
+  .set404RetryTimeout(15_000)
+  .execute();
+
+// 5. Settle compliance on-chain
+const { decryptedValue, signature } = await client
   .decryptForTx(complianceHandle)
+  .withPermit()
   .execute();
-await settleCompliance(company, value, signature);
-// → CapCheck automatically calls
-//   ComplianceCertificate.mintCertificate(company, year, value)`}
+await settleCompliance(company, decryptedValue, signature);`}
             </pre>
             <div className="grid gap-4 sm:grid-cols-2">
               <Mini
@@ -572,7 +572,7 @@ L4  Proof              →  Anyone            on-chain TX hash`}
                 },
                 {
                   q: "Is this production-ready?",
-                  a: "Wave 3 is live on Arbitrum Sepolia with all three contracts deployed and wired. 31 Hardhat tests pass on every commit. Mainnet rollout follows post-audit. ScopeX (supply chain), Credits (cCO2 token), and Tender are on the roadmap.",
+                  a: "CovertMRV is live on Arbitrum Sepolia with all eight contracts deployed and wired. 67 Hardhat tests pass. Mainnet rollout follows post-audit.",
                 },
                 {
                   q: "What does the ComplianceCertificate NFT prove?",

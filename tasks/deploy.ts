@@ -108,7 +108,7 @@ export const COMPLIANCE_CERTIFICATE_ABI = ${JSON.stringify(certArtifact.abi, nul
   fs.writeFileSync(deploymentsPath, JSON.stringify(history, null, 2));
   console.log(`✓ Updated deployments.json`);
 
-  console.log(`\n✅ Wave 3 deployment complete!`);
+  console.log(`\n✅ Core deployment complete!`);
   console.log(`   CapRegistry:           ${registryAddress}`);
   console.log(`   CapCheck:              ${checkAddress}`);
   console.log(`   ComplianceCertificate: ${certAddress}`);

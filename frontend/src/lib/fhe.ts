@@ -116,6 +116,75 @@ export async function encryptUint64(
 }
 
 /**
+ * Encrypts a uint8 value (e.g. ISO 14064 scope 0/1/2).
+ */
+export async function encryptUint8(
+  publicClient: PublicClient,
+  walletClient: WalletClient,
+  value: bigint,
+  onStep?: StepCallback,
+) {
+  const c = await getFheClient(publicClient, walletClient);
+  onStep?.("Initializing FHE");
+  const result = await c
+    .encryptInputs([Encryptable.uint8(value)])
+    .onStep((step: unknown) => onStep?.(String(step)))
+    .execute();
+  return result[0];
+}
+
+/**
+ * Encrypt emissions tonnes + ISO scope for a single facility submission.
+ */
+export async function encryptEmissionSubmission(
+  publicClient: PublicClient,
+  walletClient: WalletClient,
+  tonnes: bigint,
+  scope: number,
+  onStep?: StepCallback,
+) {
+  const c = await getFheClient(publicClient, walletClient);
+  onStep?.("Encrypting emissions + scope");
+  const result = await c
+    .encryptInputs([Encryptable.uint64(tonnes), Encryptable.uint8(BigInt(scope))])
+    .onStep((step: unknown) => onStep?.(String(step)))
+    .execute();
+  return { encEmissions: result[0], encScope: result[1] };
+}
+
+/**
+ * Batch-encrypt parallel emissions + scope arrays for batchSubmitEmissions.
+ */
+export async function encryptBatchEmissions(
+  publicClient: PublicClient,
+  walletClient: WalletClient,
+  tonnesArr: bigint[],
+  scopes: number[],
+  onStep?: StepCallback,
+) {
+  if (tonnesArr.length !== scopes.length) {
+    throw new Error("emissions and scopes length mismatch");
+  }
+  const c = await getFheClient(publicClient, walletClient);
+  onStep?.("Encrypting batch");
+  const inputs = tonnesArr.flatMap((t, i) => [
+    Encryptable.uint64(t),
+    Encryptable.uint8(BigInt(scopes[i] ?? 0)),
+  ]);
+  const result = await c
+    .encryptInputs(inputs)
+    .onStep((step: unknown) => onStep?.(String(step)))
+    .execute();
+  const encEmissions: unknown[] = [];
+  const encScopes: unknown[] = [];
+  for (let i = 0; i < tonnesArr.length; i++) {
+    encEmissions.push(result[i * 2]);
+    encScopes.push(result[i * 2 + 1]);
+  }
+  return { encEmissions, encScopes };
+}
+
+/**
  * Translates a CofheError into a human-friendly message.
  */
 export function describeFheError(err: unknown): string {

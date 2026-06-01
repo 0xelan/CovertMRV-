@@ -10,7 +10,7 @@ import hre from "hardhat";
 ///   4. setIssuer/setRetirer: owner can set; non-owner reverts
 ///   5. balanceOf indicator: returns a small non-confidential indicator value
 
-describe("cCO2 (Wave 4)", function () {
+describe("cCO2", function () {
   async function deployFixture() {
     await hre.run("task:cofhe-mocks:deploy");
     const [owner, issuer, retirer, alice, other] = await hre.ethers.getSigners();

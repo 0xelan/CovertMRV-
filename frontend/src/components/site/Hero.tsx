@@ -73,7 +73,7 @@ export function Hero() {
                 Live
               </span>
               <span className="font-mono text-xs text-foreground/75">
-                Wave 4 · ScopeX · 8 Contracts Live
+                ScopeX · 8 Contracts Live · Arbitrum Sepolia
               </span>
               <span className="ml-1 inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-emerald" />
             </motion.div>

@@ -12,7 +12,7 @@ import hre from "hardhat";
 ///   6. hasFactorForSku returns correct boolean
 ///   7. grantFactorDecrypt gives auditor permanent decrypt access
 
-describe("SupplierAttest (Wave 4)", function () {
+describe("SupplierAttest", function () {
   async function deployFixture() {
     await hre.run("task:cofhe-mocks:deploy");
     const [owner, supplier, auditor, other] = await hre.ethers.getSigners();

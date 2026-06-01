@@ -3,14 +3,14 @@ import { Encryptable, FheTypes } from "@cofhe/sdk";
 import { expect } from "chai";
 import hre from "hardhat";
 
-/// @notice Tests Wave 4 privacy hardening in CapRegistry:
+/// @notice Tests privacy hardening in CapRegistry:
 ///   1. companyFacilities is private — no external enumeration
 ///   2. hasSubmitted is private — not directly readable
 ///   3. encryptedScope is truly encrypted (returns handle, not plaintext)
 ///   4. encryptedFacilityCount is returned as euint64 handle
 ///   5. getFacilityCount(address) is restricted to owner or the company itself
 
-describe("CapRegistryPrivacy (Wave 4)", function () {
+describe("CapRegistryPrivacy", function () {
   async function deployFixture() {
     await hre.run("task:cofhe-mocks:deploy");
     const [owner, company, auditor, other] = await hre.ethers.getSigners();

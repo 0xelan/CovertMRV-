@@ -31,7 +31,7 @@ describe("CapRegistry", function () {
   }
 
   /**
-   * Helper: encrypt + submit a single facility (Wave 4: scope is encrypted).
+   * Helper: encrypt + submit a single facility (scope is encrypted).
    * scope 0 = Scope1, 1 = Scope2, 2 = Scope3 (ISO 14064)
    */
   async function submitFacility(
@@ -238,7 +238,7 @@ describe("CapRegistry", function () {
 
       const values = [1000n, 2000n, 3000n];
       const facilityIds = [10, 20, 30];
-      // Wave 4: batchSubmitEmissions requires an encrypted scope per facility
+      // batchSubmitEmissions requires an encrypted scope per facility
       const allEncrypted = await companyClient
         .encryptInputs([
           ...values.map((v) => Encryptable.uint64(v)),

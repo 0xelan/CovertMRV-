@@ -10,7 +10,7 @@ import hre from "hardhat";
 ///   4. grantRetirementAudit: non-owner of retirement reverts
 ///   5. getRetirementReceipt: returns encrypted handle (useless without FHE.allow)
 
-describe("CreditRetire (Wave 4)", function () {
+describe("CreditRetire", function () {
   async function deployFixture() {
     await hre.run("task:cofhe-mocks:deploy");
     const [owner, issuer, company, auditor, other] = await hre.ethers.getSigners();

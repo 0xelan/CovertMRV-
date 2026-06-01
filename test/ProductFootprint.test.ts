@@ -12,7 +12,7 @@ import hre from "hardhat";
 ///   6. classifyBand: >500 tCO2e → band C (2)
 ///   7. checkThreshold: double-blind pass/fail
 
-describe("ProductFootprint (Wave 4)", function () {
+describe("ProductFootprint", function () {
   const SKU = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("SKU-WIDGET-001"));
 
   async function deployFixture() {

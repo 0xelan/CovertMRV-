@@ -2,11 +2,12 @@
   "name": "covertmrv-contracts",
   "version": "1.0.0",
   "private": true,
-  "description": "CovertMRV — encrypted climate compliance contracts (Wave 2)",
+  "description": "CovertMRV — encrypted climate compliance contracts",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy:arb": "hardhat deploy:covertmrv --network arb-sepolia",
+    "deploy:full:arb": "hardhat deploy:full --network arb-sepolia",
     "set-cap:arb": "hardhat covertmrv:set-cap --network arb-sepolia",
     "grant-role:arb": "hardhat covertmrv:grant-role --network arb-sepolia",
     "clean": "hardhat clean"

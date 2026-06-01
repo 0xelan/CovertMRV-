@@ -13,9 +13,6 @@ frontend/dist
 frontend/.env.local
 frontend/.vercel
 
-# Internal docs (not for public repo)
-ARCHITECTURE.md
-about.md
-prompt_covertmrv.md
-prompt_front.md
-wave4.md
+# Documentation — README.md only in public repo
+*.md
+!README.md

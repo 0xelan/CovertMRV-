@@ -10,7 +10,7 @@ import hre from "hardhat";
 
 const YEAR = 2025;
 
-describe("CreditIssuer (Wave 4)", function () {
+describe("CreditIssuer", function () {
   async function deployFixture() {
     await hre.run("task:cofhe-mocks:deploy");
     const [owner, regulator, company, other] = await hre.ethers.getSigners();

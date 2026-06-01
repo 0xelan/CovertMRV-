@@ -7,12 +7,12 @@ import {DisclosureACL} from "./DisclosureACL.sol";
 /// @title CapRegistry
 /// @notice Encrypted facility-level emissions storage, aggregation, and
 ///         encrypted regulatory cap registry for CovertMRV.
-/// @dev Wave 4: scope encrypted as euint8; companyFacilities + hasSubmitted
+/// @dev scope encrypted as euint8; companyFacilities + hasSubmitted
 ///      made private to prevent metadata leakage (privacy gaps #1-#6).
 contract CapRegistry is DisclosureACL {
     struct FacilityData {
         euint64 encryptedEmissions;
-        euint8  encryptedScope;    // ISO 14064 scope — encrypted (Wave 4 fix)
+        euint8  encryptedScope;    // ISO 14064 scope — encrypted
         uint256 reportingPeriod;
         uint256 reportingYear;     // stored but NOT emitted in event
         bool    submitted;

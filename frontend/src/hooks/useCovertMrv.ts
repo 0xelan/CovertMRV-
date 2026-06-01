@@ -36,6 +36,8 @@ import {
   decryptForSettlement,
   decryptUint64,
   describeFheError,
+  encryptBatchEmissions,
+  encryptEmissionSubmission,
   encryptUint64,
 } from "@/lib/fhe";
 import { useFHEStatus } from "./useFHEStatus";
@@ -130,8 +132,8 @@ export function useCovertMrv() {
     address: CAP_REGISTRY_ADDRESS,
     abi: CAP_REGISTRY_ABI,
     functionName: "auditGrants",
-    args: address ? [address, address] : undefined,
-    query: { enabled: !!address },
+    args: undefined,
+    query: { enabled: false },
   });
 
   const certificateBalance = useReadContract({
@@ -167,14 +169,20 @@ export function useCovertMrv() {
       const { publicClient: pc, walletClient: wc } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
-        const encrypted = await encryptUint64(pc, wc, tonnes, fhe.setLabel);
+        const { encEmissions, encScope } = await encryptEmissionSubmission(
+          pc,
+          wc,
+          tonnes,
+          scope,
+          fhe.setLabel,
+        );
         fhe.setStep("COMPUTING");
         const fees = await getGasFees(pc);
         const hash = await writeContractAsync({
           address: CAP_REGISTRY_ADDRESS,
           abi: CAP_REGISTRY_ABI,
           functionName: "submitEmissions",
-          args: [facilityId, encrypted as never, BigInt(reportingYear), scope],
+          args: [facilityId, encEmissions as never, encScope as never, BigInt(reportingYear)],
           gas: GAS.submitEmissions,
           ...fees,
         });
@@ -194,19 +202,21 @@ export function useCovertMrv() {
       const { publicClient: pc, walletClient: wc } = ensureClients();
       try {
         fhe.setStep("ENCRYPTING");
-        const encryptables = tonnesArr.map((v) => ({ data: v, utype: 5 as const }));
-        const { Encryptable } = await import("@cofhe/sdk");
-        const encrypted = await (await import("@/lib/fhe").then((m) => m.getFheClient(pc, wc)))
-          .encryptInputs(encryptables.map((e) => Encryptable.uint64(e.data)))
-          .onStep((s: unknown) => fhe.setLabel(String(s)))
-          .execute();
+        const scopes = tonnesArr.map(() => scope);
+        const { encEmissions, encScopes } = await encryptBatchEmissions(
+          pc,
+          wc,
+          tonnesArr,
+          scopes,
+          fhe.setLabel,
+        );
         fhe.setStep("COMPUTING");
         const fees = await getGasFees(pc);
         const hash = await writeContractAsync({
           address: CAP_REGISTRY_ADDRESS,
           abi: CAP_REGISTRY_ABI,
           functionName: "batchSubmitEmissions",
-          args: [facilityIds_, encrypted as never, BigInt(reportingYear), scope],
+          args: [facilityIds_, encEmissions as never, encScopes as never, BigInt(reportingYear)],
           gas: GAS.batchSubmitEmissions,
           ...fees,
         });
@@ -312,6 +322,19 @@ export function useCovertMrv() {
       });
     },
     [publicClient, writeContractAsync],
+  );
+
+  const checkAuditActive = useCallback(
+    async (company: `0x${string}`, auditor: `0x${string}`) => {
+      if (!publicClient) throw new Error("No public client");
+      return publicClient.readContract({
+        address: CAP_REGISTRY_ADDRESS,
+        abi: CAP_REGISTRY_ABI,
+        functionName: "isAuditActive",
+        args: [company, auditor],
+      }) as Promise<boolean>;
+    },
+    [publicClient],
   );
 
   const checkCompliance = useCallback(
@@ -449,8 +472,8 @@ export function useCovertMrv() {
     complianceHandle: (complianceHandle.data ?? 0n) as bigint,
     settled: settledStatus.data as readonly [boolean, boolean] | undefined,
     lastCheckedAt: (lastCheckedAt.data ?? 0n) as bigint,
-    auditGrantExpiry: (auditGrant.data as readonly [bigint, boolean] | undefined)?.[0] ?? 0n,
-    auditGrantActive: (auditGrant.data as readonly [bigint, boolean] | undefined)?.[1] ?? false,
+    auditGrantExpiry: 0n,
+    auditGrantActive: false,
     certificateBalance: (certificateBalance.data ?? 0n) as bigint,
     // FHE step state
     fheStep: fhe.step,
@@ -480,6 +503,7 @@ export function useCovertMrv() {
     grantCheckAccess,
     grantAuditAccess,
     revokeAuditAccess,
+    checkAuditActive,
     checkCompliance,
     settleCompliance,
     // decrypts

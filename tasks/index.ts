@@ -1,4 +1,5 @@
 import "./deploy";
-import "./deployWave4";
+import "./deployFull";
+import "./verify";
 import "./set-cap";
 import "./grant-role";

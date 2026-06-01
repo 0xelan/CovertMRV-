@@ -33,12 +33,22 @@ import { z } from "zod";
 import { isAddress } from "viem";
 import { Logo } from "@/components/site/Logo";
 import { EncryptedNumber, SpotlightCard } from "@/components/site/motion-primitives";
-import { Sparkline } from "@/components/site/diagrams";
 import { ConnectWallet } from "@/components/shared/ConnectWallet";
 import { ChainGuard } from "@/components/shared/ChainGuard";
 import { useCovertMrv, useWaitForTransactionReceipt } from "@/hooks/useCovertMrv";
+import { useSupplyChain } from "@/hooks/useSupplyChain";
+import { useCarbonCredits } from "@/hooks/useCarbonCredits";
 import { useAccount, useChainId } from "wagmi";
-import { CAP_REGISTRY_ADDRESS, CAP_CHECK_ADDRESS, COMPLIANCE_CERTIFICATE_ADDRESS } from "@/config/contracts";
+import {
+  CAP_REGISTRY_ADDRESS,
+  CAP_CHECK_ADDRESS,
+  COMPLIANCE_CERTIFICATE_ADDRESS,
+  SUPPLIER_ATTEST_ADDRESS,
+  PRODUCT_FOOTPRINT_ADDRESS,
+  CCO2_ADDRESS,
+  CREDIT_ISSUER_ADDRESS,
+  CREDIT_RETIRE_ADDRESS,
+} from "@/config/contracts";
 import { fmtTonnes, shortAddress, shortHandle, fmtCountdown } from "@/lib/format";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -402,11 +412,10 @@ function StatusPill({ kind, children }: { kind: "ok" | "warn" | "err" | "info"; 
 /* -------------------- Overview -------------------- */
 
 function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
-  const sparkA = [12, 18, 14, 22, 19, 26, 24, 30, 28, 34, 31, 38];
-  const sparkB = [40, 38, 42, 36, 44, 39, 46, 41, 48, 43, 50, 45];
   const facilityCount = ctx.facilityIds.length;
   const settledStatus = ctx.settled?.[0];
   const settledValue = ctx.settled?.[1];
+  const contractCount = 8;
   return (
     <>
       <PageHeader
@@ -443,14 +452,13 @@ function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
             </div>
           </div>
 
-          <div className="mt-8 grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-foreground/10 bg-foreground/10 md:grid-cols-6">
+          <div className="mt-8 grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-foreground/10 bg-foreground/10 md:grid-cols-4">
             {[
-              { l: "Facilities", v: String(facilityCount), spark: sparkA },
+              { l: "Facilities", v: String(facilityCount) },
               { l: "Aggregate Total", v: ctx.companyTotalHandle ? "encrypted" : "—" },
               { l: "Certificates", v: ctx.certificateBalance > 0n ? String(ctx.certificateBalance) : "0" },
-              { l: "Contracts", v: "8", spark: undefined },
-              { l: "Tests", v: "56", spark: undefined },
-              { l: "Last Check", v: ctx.lastCheckedAt ? new Date(Number(ctx.lastCheckedAt) * 1000).toLocaleString([], { month: "short", day: "numeric" }) : "—", spark: sparkB },
+              { l: "Contracts", v: String(contractCount) },
+              { l: "Last Check", v: ctx.lastCheckedAt ? new Date(Number(ctx.lastCheckedAt) * 1000).toLocaleString([], { month: "short", day: "numeric" }) : "—" },
             ].map((s, i) => (
               <motion.div
                 key={s.l}
@@ -465,9 +473,6 @@ function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
                 <p className="font-display mt-2 text-2xl font-normal tracking-tight">
                   {s.v}
                 </p>
-                {s.spark && (
-                  <Sparkline values={s.spark} className="mt-2 opacity-70" />
-                )}
               </motion.div>
             ))}
           </div>
@@ -540,11 +545,11 @@ function Overview({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
           <ContractCard label="CapRegistry" address={CAP_REGISTRY_ADDRESS} />
           <ContractCard label="CapCheck" address={CAP_CHECK_ADDRESS} />
           <ContractCard label="ComplianceCertificate" address={COMPLIANCE_CERTIFICATE_ADDRESS} />
-          <ContractCard label="SupplierAttest" address="pending deploy" />
-          <ContractCard label="ProductFootprint" address="pending deploy" />
-          <ContractCard label="cCO2" address="pending deploy" />
-          <ContractCard label="CreditIssuer" address="pending deploy" />
-          <ContractCard label="CreditRetire" address="pending deploy" />
+          <ContractCard label="SupplierAttest" address={SUPPLIER_ATTEST_ADDRESS} />
+          <ContractCard label="ProductFootprint" address={PRODUCT_FOOTPRINT_ADDRESS} />
+          <ContractCard label="cCO2" address={CCO2_ADDRESS} />
+          <ContractCard label="CreditIssuer" address={CREDIT_ISSUER_ADDRESS} />
+          <ContractCard label="CreditRetire" address={CREDIT_RETIRE_ADDRESS} />
         </div>
       </div>
     </>
@@ -1437,24 +1442,36 @@ function AuditAccess({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
     return () => clearInterval(t);
   }, []);
 
-  // Locally track issued grants (chain doesn't expose enumeration). Persisted per-address.
+  // Load issued grants from localStorage, then verify on-chain status.
   const storageKey = ctx.address ? `covertmrv.grants.${ctx.address.toLowerCase()}` : "";
   useEffect(() => {
-    if (!storageKey) return;
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
+    if (!storageKey || !ctx.address) return;
+    (async () => {
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) return;
         const parsed = JSON.parse(raw) as Array<{ auditor: string; expiry: string }>;
-        setGrants(
-          parsed.map((g) => ({
-            auditor: g.auditor as `0x${string}`,
+        const verified: Grant[] = [];
+        for (const g of parsed) {
+          const auditor = g.auditor as `0x${string}`;
+          let active = false;
+          try {
+            active = await ctx.checkAuditActive(ctx.address!, auditor);
+          } catch {
+            active = false;
+          }
+          verified.push({
+            auditor,
             expiry: BigInt(g.expiry),
-            active: true,
-          })),
-        );
+            active,
+          });
+        }
+        setGrants(verified);
+      } catch {
+        /* noop */
       }
-    } catch {/* noop */}
-  }, [storageKey]);
+    })();
+  }, [storageKey, ctx.address, ctx]);
 
   function persist(next: Grant[]) {
     setGrants(next);
@@ -1502,7 +1519,7 @@ function AuditAccess({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
         title="Audit Access"
         desc="Issue time-bounded decrypt access to your aggregate emissions total. Auditors can verify quality. Access expires automatically — no manual revocation required."
       />
-      <AuditTimer ctx={ctx} />
+      <AuditTimer grants={grants} now={now} />
       <div className="grid gap-6 p-10 lg:grid-cols-[1fr_1.4fr]">
         <form
           onSubmit={grant}
@@ -1995,41 +2012,29 @@ function Row({ label, value }: { label: string; value: string }) {
 
 /* -------------------- Audit Timer -------------------- */
 
-function AuditTimer({ ctx }: { ctx: ReturnType<typeof useCovertMrv> }) {
-  const [now, setNow] = useState(Math.floor(Date.now() / 1000));
+function AuditTimer({
+  grants,
+  now,
+}: {
+  grants: { auditor: `0x${string}`; expiry: bigint; active: boolean }[];
+  now: number;
+}) {
+  const activeGrants = grants.filter((g) => g.active && Number(g.expiry) > now);
+  if (activeGrants.length === 0) return null;
 
-  useEffect(() => {
-    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  const expiry = Number(ctx.auditGrantExpiry);
-  const hasGrant = expiry > 0;
-  const remaining = expiry - now;
-  const active = ctx.auditGrantActive && remaining > 0;
-
-  if (!hasGrant) return null;
+  const nearest = activeGrants.reduce((a, b) =>
+    Number(a.expiry) < Number(b.expiry) ? a : b,
+  );
+  const remaining = Number(nearest.expiry) - now;
 
   return (
-    <div
-      className={`flex items-center gap-4 border-b px-10 py-3 ${
-        active
-          ? "border-emerald/20 bg-emerald/5"
-          : "border-destructive/20 bg-destructive/5"
-      }`}
-    >
-      <Clock className={`h-4 w-4 flex-none ${active ? "text-emerald" : "text-destructive/70"}`} />
+    <div className="flex items-center gap-4 border-b border-emerald/20 bg-emerald/5 px-10 py-3">
+      <Clock className="h-4 w-4 flex-none text-emerald" />
       <p className="font-mono text-[12px]">
-        {active ? (
-          <>
-            <span className="text-foreground/60">Inbound audit access expires in </span>
-            <span className={`font-semibold ${active ? "text-emerald" : "text-destructive"}`}>
-              {fmtCountdown(remaining)}
-            </span>
-          </>
-        ) : (
-          <span className="text-foreground/55">Your inbound audit access grant has expired.</span>
-        )}
+        <span className="text-foreground/60">Active audit grant to </span>
+        <span className="font-semibold text-emerald">{shortAddress(nearest.auditor, 4)}</span>
+        <span className="text-foreground/60"> expires in </span>
+        <span className="font-semibold text-emerald">{fmtCountdown(remaining)}</span>
       </p>
     </div>
   );
@@ -2078,110 +2083,267 @@ function RoleBadge({
   );
 }
 
-/* -------------------- Supply Chain (Wave 4) -------------------- */
+/* -------------------- Supply Chain -------------------- */
 
 function SupplyChainView() {
+  const sc = useSupplyChain();
+  const [sku, setSku] = useState("");
+  const [factor, setFactor] = useState("");
+  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [suppliers, setSuppliers] = useState("");
+  const [threshold, setThreshold] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
+
+  const supplierList = useMemo(() => {
+    return suppliers
+      .split(/[,\s]+/)
+      .map((s) => s.trim())
+      .filter((s) => isAddress(s)) as `0x${string}`[];
+  }, [suppliers]);
+
+  async function run(action: () => Promise<`0x${string}`>, label: string) {
+    try {
+      setPending(label);
+      setMsg(null);
+      const h = await action();
+      setTxHash(h);
+      setMsg({ tone: "ok", text: `${label} submitted: ${shortHandle(h)}` });
+    } catch (e) {
+      setMsg({ tone: "err", text: (e as Error).message });
+    } finally {
+      setPending(null);
+    }
+  }
+
   return (
     <>
       <PageHeader
         index="06"
         title="Supply Chain"
-        desc="Wave 4 · Encrypted Scope 3 footprint rollups. Submit supplier intensity factors, compute multi-supplier footprint totals, and classify bands — all without revealing individual supplier data."
+        desc="Submit encrypted supplier intensity factors, compute multi-supplier footprint totals, and classify bands — without revealing individual supplier data."
       />
-      <div className="p-10 space-y-6">
-        <div className="grid gap-6 lg:grid-cols-3">
-          {[
-            {
-              name: "SupplierAttest",
-              desc: "Register encrypted intensity factors per SKU. FHE.allowTransient ensures cross-contract reads expire after the transaction.",
-              status: "pending deploy",
-            },
-            {
-              name: "ProductFootprint",
-              desc: "Aggregate supplier factors via FHE.add. Classify into encrypted bands A (≤100), B (101-500), C (>500) using FHE.select.",
-              status: "pending deploy",
-            },
-            {
-              name: "Audit Disclosure",
-              desc: "grantFactorDecrypt grants permanent decrypt access. grantRetirementAudit grants time-bounded access to a specific retirement receipt.",
-              status: "wave 4 · live",
-            },
-          ].map((c) => (
-            <SpotlightCard key={c.name} className="rounded-2xl border border-foreground/10 bg-surface p-7">
-              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">{c.name}</p>
-              <p className="mt-4 text-[13px] leading-relaxed text-foreground/65">{c.desc}</p>
-              <div className="mt-6 flex items-center gap-2 font-mono text-[10px] text-foreground/40">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald" />
-                {c.status}
-              </div>
-            </SpotlightCard>
-          ))}
-        </div>
-        <div className="rounded-2xl border border-blue-info/20 bg-blue-info/5 p-6">
-          <div className="flex items-center gap-2">
-            <Info className="h-4 w-4 text-blue-info" />
-            <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-blue-info">Wave 4 Status</p>
-          </div>
-          <p className="mt-3 text-[13px] text-foreground/65 leading-relaxed">
-            Supply chain contracts are compiled and tested (8 tests for ProductFootprint, 6 for SupplierAttest). 
-            Run <code className="rounded bg-foreground/10 px-1 font-mono text-[11px]">npx hardhat run tasks/deployWave4.ts --network arb-sepolia</code> to deploy and wire all 8 contracts.
+      <div className="grid gap-6 p-10 lg:grid-cols-2">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!sku || !factor) return;
+            void run(
+              () => sc.submitFactor(sku, BigInt(factor), Number(year)),
+              "submitFactor",
+            );
+          }}
+          className="rounded-2xl border border-foreground/10 bg-surface p-8 space-y-5"
+        >
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">
+            Submit Supplier Factor
           </p>
+          <Field label="Product SKU">
+            <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="widget-x" className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
+          </Field>
+          <Field label="Intensity (tCO₂e per unit)">
+            <input value={factor} onChange={(e) => setFactor(e.target.value)} placeholder="e.g. 24" className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
+          </Field>
+          <Field label="Reporting Year">
+            <input value={year} onChange={(e) => setYear(e.target.value)} className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
+          </Field>
+          {sc.role === 0 && (
+            <button type="button" onClick={() => void sc.registerAsEmitter()} className="text-[12px] text-blue-info underline">
+              Register as Emitter on SupplierAttest first
+            </button>
+          )}
+          <button type="submit" disabled={!!pending || sc.fheWorking} className="inline-flex items-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background disabled:opacity-60">
+            {pending === "submitFactor" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            Submit Factor
+          </button>
+        </form>
+
+        <div className="rounded-2xl border border-foreground/10 bg-surface p-8 space-y-5">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">
+            Compute Footprint
+          </p>
+          <Field label="Product SKU">
+            <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="widget-x" className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
+          </Field>
+          <Field label="Supplier Addresses (comma-separated)">
+            <textarea value={suppliers} onChange={(e) => setSuppliers(e.target.value)} placeholder="0x..., 0x..." rows={3} className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
+          </Field>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              disabled={!!pending || !sku || supplierList.length === 0}
+              onClick={() => void run(() => sc.computeFootprint(sku, supplierList), "computeFootprint")}
+              className="inline-flex items-center gap-2 rounded-full border border-foreground/20 px-5 py-2.5 text-[12px] font-semibold disabled:opacity-60"
+            >
+              Compute Total
+            </button>
+            <button
+              type="button"
+              disabled={!!pending || !sku || supplierList.length === 0}
+              onClick={() => void run(() => sc.classifyBand(sku, supplierList), "classifyBand")}
+              className="inline-flex items-center gap-2 rounded-full border border-foreground/20 px-5 py-2.5 text-[12px] font-semibold disabled:opacity-60"
+            >
+              Classify Band
+            </button>
+          </div>
+          <Field label="Threshold (tCO₂e) for double-blind check">
+            <input value={threshold} onChange={(e) => setThreshold(e.target.value)} placeholder="e.g. 500" className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
+          </Field>
+          <button
+            type="button"
+            disabled={!!pending || !sku || !threshold || supplierList.length === 0}
+            onClick={() =>
+              void run(
+                () => sc.checkThreshold(sku, supplierList, BigInt(threshold)),
+                "checkThreshold",
+              )
+            }
+            className="inline-flex items-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background disabled:opacity-60"
+          >
+            Check Threshold
+          </button>
         </div>
       </div>
+      {msg && (
+        <p className={`px-10 pb-6 font-mono text-[12px] ${msg.tone === "ok" ? "text-emerald" : "text-destructive"}`}>
+          {msg.text}
+          {txHash && msg.tone === "ok" && (
+            <a href={`https://sepolia.arbiscan.io/tx/${txHash}`} target="_blank" rel="noreferrer" className="ml-2 underline">
+              Arbiscan
+            </a>
+          )}
+        </p>
+      )}
     </>
   );
 }
 
-/* -------------------- Carbon Credits (Wave 4) -------------------- */
+/* -------------------- Carbon Credits -------------------- */
 
 function CarbonCreditsView() {
+  const credits = useCarbonCredits();
+  const [company, setCompany] = useState("");
+  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [retireAmount, setRetireAmount] = useState("");
+  const [decryptedBal, setDecryptedBal] = useState<string | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
+
   return (
     <>
       <PageHeader
         index="07"
         title="Carbon Credits"
-        desc="Wave 4 · FHERC20 cCO2 encrypted carbon credit token. Compliant companies receive credits via FHE.select conditional minting. Retire credits with encrypted receipts and selective audit disclosure."
+        desc="FHERC20 cCO2 encrypted carbon credit token. Compliant companies receive credits via FHE.select conditional minting. Retire credits with encrypted receipts."
       />
-      <div className="p-10 space-y-6">
-        <div className="grid gap-6 lg:grid-cols-3">
-          {[
-            {
-              name: "cCO2 Token",
-              desc: "FHERC20 encrypted carbon credit. All balances remain ciphertext on-chain. Mint and burn only via authorized contracts.",
-              status: "pending deploy",
-            },
-            {
-              name: "CreditIssuer",
-              desc: "FHE.select(compliant, issuanceRate, 0) — conditionally mints credits. Compliant and non-compliant paths are indistinguishable from calldata.",
-              status: "pending deploy",
-            },
-            {
-              name: "CreditRetire",
-              desc: "Burns cCO2 via burnFrom. Stores encrypted retirement receipts. Auditors receive time-bounded FHE.allow grants per retirement ID.",
-              status: "pending deploy",
-            },
-          ].map((c) => (
-            <SpotlightCard key={c.name} className="rounded-2xl border border-foreground/10 bg-surface p-7">
-              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">{c.name}</p>
-              <p className="mt-4 text-[13px] leading-relaxed text-foreground/65">{c.desc}</p>
-              <div className="mt-6 flex items-center gap-2 font-mono text-[10px] text-foreground/40">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald" />
-                {c.status}
-              </div>
-            </SpotlightCard>
-          ))}
+      <div className="grid gap-6 p-10 lg:grid-cols-3">
+        <div className="rounded-2xl border border-foreground/10 bg-surface p-8 space-y-5">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">Issue Credits</p>
+          <Field label="Company Address">
+            <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="0x…" className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
+          </Field>
+          <Field label="Reporting Year">
+            <input value={year} onChange={(e) => setYear(e.target.value)} className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
+          </Field>
+          <button
+            type="button"
+            disabled={!!pending || !isAddress(company)}
+            onClick={async () => {
+              try {
+                setPending("issue");
+                setMsg(null);
+                const h = await credits.issueCredits(company as `0x${string}`, Number(year));
+                setTxHash(h);
+                setMsg({ tone: "ok", text: `Credits issued: ${shortHandle(h)}` });
+                credits.refetchBalance();
+              } catch (e) {
+                setMsg({ tone: "err", text: (e as Error).message });
+              } finally {
+                setPending(null);
+              }
+            }}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background disabled:opacity-60"
+          >
+            {pending === "issue" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            Issue Credits
+          </button>
+          <p className="text-[12px] text-foreground/55">Requires prior checkCompliance for the company and year.</p>
         </div>
-        <div className="rounded-2xl border border-blue-info/20 bg-blue-info/5 p-6">
-          <div className="flex items-center gap-2">
-            <Info className="h-4 w-4 text-blue-info" />
-            <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-blue-info">Wave 4 Status</p>
-          </div>
-          <p className="mt-3 text-[13px] text-foreground/65 leading-relaxed">
-            Carbon credit contracts are compiled and tested (5 cCO2 tests, 4 CreditIssuer tests, 5 CreditRetire tests). 
-            Deploy with <code className="rounded bg-foreground/10 px-1 font-mono text-[11px]">npx hardhat deploy:wave4 --network arb-sepolia</code> to activate the full credit issuance pipeline.
-          </p>
+
+        <div className="rounded-2xl border border-foreground/10 bg-surface p-8 space-y-5">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">Your Balance</p>
+          <p className="font-display text-3xl">{credits.hasBalance ? "encrypted" : "—"}</p>
+          <p className="font-mono text-[11px] text-foreground/45">Indicator: {String(credits.balanceIndicator)}</p>
+          <button
+            type="button"
+            disabled={!!pending || !credits.hasBalance}
+            onClick={async () => {
+              try {
+                setPending("decrypt");
+                const v = await credits.decryptBalance();
+                setDecryptedBal(v.toString());
+              } catch (e) {
+                setMsg({ tone: "err", text: (e as Error).message });
+              } finally {
+                setPending(null);
+              }
+            }}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-emerald/40 px-6 py-3 text-[13px] font-semibold text-emerald disabled:opacity-60"
+          >
+            {pending === "decrypt" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlock className="h-4 w-4" />}
+            Decrypt Balance
+          </button>
+          {decryptedBal && (
+            <p className="font-mono text-[12px] text-emerald">Decrypted: {decryptedBal} base units</p>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-foreground/10 bg-surface p-8 space-y-5">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/45">Retire Credits</p>
+          <Field label="Amount (base units)">
+            <input value={retireAmount} onChange={(e) => setRetireAmount(e.target.value)} placeholder="e.g. 1000000000000000000" className="w-full rounded-lg border border-foreground/15 bg-background px-4 py-3 font-mono text-sm outline-none focus:border-emerald" />
+          </Field>
+          {credits.role === 0 && (
+            <button type="button" onClick={() => void credits.registerAsEmitter()} className="text-[12px] text-blue-info underline">
+              Register as Emitter first
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={!!pending || !retireAmount}
+            onClick={async () => {
+              try {
+                setPending("retire");
+                setMsg(null);
+                const { hash } = await credits.retireCredits(BigInt(retireAmount), Number(year));
+                setTxHash(hash);
+                setMsg({ tone: "ok", text: `Retired: ${shortHandle(hash)}` });
+                credits.refetchBalance();
+              } catch (e) {
+                setMsg({ tone: "err", text: (e as Error).message });
+              } finally {
+                setPending(null);
+              }
+            }}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3 text-[13px] font-semibold text-background disabled:opacity-60"
+          >
+            {pending === "retire" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            Retire Credits
+          </button>
         </div>
       </div>
+      {msg && (
+        <p className={`px-10 pb-6 font-mono text-[12px] ${msg.tone === "ok" ? "text-emerald" : "text-destructive"}`}>
+          {msg.text}
+          {txHash && msg.tone === "ok" && (
+            <a href={`https://sepolia.arbiscan.io/tx/${txHash}`} target="_blank" rel="noreferrer" className="ml-2 underline">
+              Arbiscan
+            </a>
+          )}
+        </p>
+      )}
     </>
   );
 }
