@@ -19,7 +19,8 @@ export default defineConfig({
     format: "es",
   },
   optimizeDeps: {
-    exclude: ["@cofhe/sdk"],
-    include: ["iframe-shared-storage"],
+    // Pre-bundle @cofhe/sdk + tweetnacl so CJS default interop works in dev.
+    include: ["iframe-shared-storage", "@cofhe/sdk", "tweetnacl"],
+    needsInterop: ["tweetnacl"],
   },
 });
